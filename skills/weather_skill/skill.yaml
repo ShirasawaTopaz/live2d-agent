@@ -1,0 +1,27 @@
+name: weather_skill
+version: 1.0.0
+description: Get weather information for cities
+author: Live2oder User
+
+category: utility
+tags: [weather, api, utility]
+
+dependencies:
+  python_packages: ["requests"]
+  system_commands: []
+  skills: []
+
+prompts:
+  - name: weather_rules
+    description: Rules for weather queries
+    required: true
+
+tools:
+  - name: get_weather
+    description: Get current weather for a city
+  - name: get_forecast
+    description: Get weather forecast for a city
+
+config:
+  default_units: metric
+  api_timeout: 10

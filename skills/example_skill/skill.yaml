@@ -1,0 +1,25 @@
+name: example_skill
+version: 1.0.0
+description: An example external skill demonstrating the Skill system
+author: Live2oder Team
+
+category: example
+tags: [example, demo]
+
+dependencies:
+  python_packages: []
+  system_commands: []
+  skills: []
+
+prompts:
+  - name: example_rules
+    description: Example skill rules and guidelines
+    required: true
+
+tools:
+  - name: example_tool
+    description: An example tool that does something useful
+
+config:
+  example_setting: default_value
+  max_retries: 3

@@ -1,0 +1,73 @@
+# ========== Build Outputs ==========
+# PyInstaller
+build/
+dist/
+*.spec
+# Nuitka
+*.build/
+*.dist/
+*.onefile-build/
+
+# ========== Virtual Environment ==========
+.venv/
+venv/
+env/
+pyvenv.cfg
+
+# ========== User Configuration ==========
+# User config with API keys - keep config.example.json
+config.json
+.env
+
+# ========== Python ==========
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.dist-info/
+*.eggs/
+*.egg/
+.pip-cache/
+MANIFEST
+
+# ========== Temporary Files ==========
+*.tmp
+*.temp
+
+# ========== AI Model Cache ==========
+ai_model/
+
+# ========== IDE and Editor ==========
+.vscode/
+.idea/
+.claude/
+.trae/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ========== Test and Linter Cache ==========
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# ========== Tool Specific ==========
+.sisyphus/
+
+# ========== Logs ==========
+*.log
+
+# ========== Agent/Plan Files ==========
+AGENT.md
+plan.md
+todo.md
+TODO.md
+
+# ========== Other ==========
+# Windows accidental special file
+nul
+data

@@ -1,0 +1,81 @@
+{
+    "live2dSocket": "ws://127.0.0.1:10086/api",
+    "models": [
+        {
+            "name": "agent-ollama-modular",
+            "model": "gemma3:1b",
+            "type": "ollama",
+            "system_prompt": {
+                "modules": [
+                    "core/base_rules",
+                    "core/tool_calling",
+                    "core/live2d_rules",
+                    "personality/cute",
+                    "capabilities/file_ops",
+                    "capabilities/office",
+                    "capabilities/web_search",
+                    "capabilities/live2d_ctrl",
+                    "scenarios/daily_chat",
+                    "languages/chinese"
+                ]
+            },
+            "default": false,
+            "options": {
+                "temperature": 0.3,
+                "top_p": 0.9
+            }
+        },
+        {
+            "name": "agent-online-modular",
+            "model": "ark-code-latest",
+            "type": "online",
+            "api_key": "your-api-key-here",
+            "system_prompt": {
+                "prefix": "你是花里实乃理，是我(Shirasawa)的老婆。",
+                "modules": [
+                    "core/base_rules",
+                    "core/tool_calling",
+                    "core/live2d_rules",
+                    "capabilities/file_ops",
+                    "capabilities/office",
+                    "capabilities/live2d_ctrl",
+                    "scenarios/daily_chat",
+                    "languages/chinese"
+                ],
+                "suffix": "请用亲切温柔的语气回应用户。"
+            },
+            "default": false,
+            "options": {
+                "api": "https://ark.cn-beijing.volces.com/api/coding/v3",
+                "max_tokens": 1024,
+                "temperature": 0.3,
+                "top_p": 0.9
+            }
+        },
+        {
+            "name": "agent-legacy",
+            "model": "gemma3:1b",
+            "type": "ollama",
+            "system_prompt": "你是一个可爱的Live2D虚拟助手。\n\n## 核心规则\n1. 当需要显示内容给用户时，必须使用 display_bubble_text 工具\n2. **绝对禁止**在调用 set_expression/next_expression/clear_expression 修改表情后输出任何内容\n3. **严禁**输出 \"Ok\"、\"已修改\"、\"完成了\"、\"已设置\"、\"好了\"这类确认文字\n4. 修改表情成功后必须立刻停止，直接结束回复，不要说任何话，不要显示任何气泡\n\n## 可用工具\n\n### display_bubble_text - 显示气泡文本\n用于向用户显示消息气泡，**只有当你需要对话交流时才使用，修改表情/动作后绝对不要使用**\n- text(必需): 显示文本内容\n- choices(可选): 选项数组\n- textFrameColor(可选): 边框颜色，默认0\n- textColor(可选): 文字颜色，默认16777215\n- duration(可选): 显示时长毫秒，默认13000\n\n### set_expression - 设置 Live2D 表情\n**修改表情后不需要额外回复任何内容，直接结束**\n\n### next_expression - 切换到下一个表情\n**切换表情后不需要额外回复任何内容，直接结束**\n\n### clear_expression - 清除所有表情\n**清除表情后不需要额外回复任何内容，直接结束**\n\n### file - 文件操作工具\n用于读取、写入、搜索文件和目录。\n- action(必需): 操作类型 - read/write/search_files/search_dirs\n- path(必需): 文件或目录路径\n- content(可选): 写入内容（write时需要）\n- pattern(可选): 搜索模式（search_files时使用）\n\n请用自然友好的语气回应用户。\n\n# 🔴 **最最重要的铁律** 🔴\n当用户让你修改表情，你调用了 set_expression/next_expression/clear_expression 工具之后，**必须立刻停止**，**绝对不要**使用 display_bubble_text 输出 \"Ok\"、\"已修改\" 之类的确认信息，**直接结束回复**。表情修改已经生效，不需要额外确认。",
+            "default": false,
+            "options": {
+                "temperature": 0.3,
+                "top_p": 0.9
+            }
+        }
+    ],
+    "memory": {
+        "enabled": true,
+        "storage_type": "json",
+        "data_dir": "./data/memory",
+        "max_messages": 20,
+        "max_tokens": 4096,
+        "compression_enabled": true,
+        "compression_model": "default",
+        "compression_threshold_messages": 15,
+        "enable_long_term": true,
+        "long_term_storage": "sqlite",
+        "auto_cleanup": true,
+        "max_sessions": 10
+    }
+}

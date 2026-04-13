@@ -1,0 +1,427 @@
+"""
+Memory System Main Manager - Reference Implementation
+⚠️  This is reference design code, not yet production-ready
+"""
+
+import asyncio
+import logging
+import os
+from typing import List, Optional
+
+from internal.memory._types import (
+    Message,
+    SessionInfo,
+    ConversationTurn,
+    MemoryConfig,
+)
+from internal.memory._session import SessionManager
+from internal.memory._context import ContextManager
+from internal.memory._summary import Summarizer
+from internal.memory._long_term import LongTermMemory
+from internal.memory._archive import ArchiveCompressor
+from internal.memory.storage._base import BaseStorage
+from internal.memory.storage._json import JSONStorage
+from internal.memory.storage._sqlite import SQLiteStorage
+
+# MCP (Model Context Protocol) import
+from internal.mcp import (
+    MCPConfig,
+    MCPContextManager,
+    MCPMessage,
+    MCPMode,
+)
+from internal.mcp.remote import RemoteMCPBackend
+
+
+logger = logging.getLogger(__name__)
+
+
+def create_storage(cfg: MemoryConfig) -> BaseStorage:
+    """根据配置创建存储后端"""
+    if cfg.storage_type == "json":
+        return JSONStorage(cfg.data_dir)
+    elif cfg.storage_type == "sqlite":
+        db_path = os.path.join(cfg.data_dir, "memory.db")
+        return SQLiteStorage(db_path)
+    else:
+        raise ValueError(f"Unknown storage type: {cfg.storage_type}")
+
+
+class MemoryManager:
+    """Memory系统主管理器
+    协调SessionManager, ContextManager, Summarizer, LongTermMemory, ArchiveCompressor
+
+    When MCP is enabled, delegates to MCPContextManager for enhanced context management.
+    """
+
+    def __init__(self, config: MemoryConfig):
+        self.config = config
+        self._storage: Optional[BaseStorage] = None
+        self._session_manager: Optional[SessionManager] = None
+        self._context_manager: Optional[ContextManager] = None
+        self._summarizer: Optional[Summarizer] = None
+        self._long_term: Optional[LongTermMemory] = None
+        self._archive_compressor: Optional[ArchiveCompressor] = None
+
+        # MCP integration
+        self._mcp: Optional[MCPContextManager] = None
+
+        self._initialized = False
+
+    @property
+    def storage(self) -> BaseStorage:
+        assert self._storage is not None, "Memory not initialized, call init() first"
+        return self._storage
+
+    @property
+    def session_manager(self) -> SessionManager:
+        assert self._session_manager is not None
+        return self._session_manager
+
+    @property
+    def context_manager(self) -> ContextManager:
+        assert self._context_manager is not None
+        return self._context_manager
+
+    @property
+    def summarizer(self) -> Summarizer:
+        assert self._summarizer is not None
+        return self._summarizer
+
+    @property
+    def long_term(self) -> Optional[LongTermMemory]:
+        return self._long_term
+
+    @property
+    def archive_compressor(self) -> Optional[ArchiveCompressor]:
+        return self._archive_compressor
+
+    async def init(self) -> None:
+        """初始化所有组件"""
+        if not self.config.enabled:
+            logger.info("Memory system disabled by configuration")
+            return
+
+        # Check if MCP is enabled
+        if self.config.use_mcp:
+            # Initialize MCP context manager
+            logger.info("Initializing MCP (Model Context Protocol)...")
+
+            # Extract MCP configuration from memory config
+            # For backward compatibility, reuse existing settings
+            mcp_config = MCPConfig(
+                enabled=True,
+                max_working_messages=self.config.max_messages,
+                max_total_tokens=self.config.max_tokens,
+                compression_threshold_messages=self.config.compression_threshold_messages,
+                enable_long_term=self.config.enable_long_term,
+                storage_type=self.config.storage_type,
+            )
+
+            data_dir = self.config.data_dir.replace("/memory", "/mcp")
+            self._mcp = MCPContextManager(mcp_config, data_dir=data_dir)
+
+            # Check if remote MCP is configured
+            # If full remote mode is used, setup remote backend
+            if mcp_config.mode == MCPMode.REMOTE and mcp_config.remote.enabled:
+                remote_backend = RemoteMCPBackend(mcp_config.remote)
+                self._mcp.set_storage(remote_backend)
+
+            # Switch to default scope
+            await self._mcp.switch_scope("default")
+
+            self._initialized = True
+            logger.info("MemoryManager initialized with MCP successfully")
+            return
+
+        # Original initialization for legacy memory system
+        # 创建存储
+        self._storage = create_storage(self.config)
+        await self._storage.init()
+
+        # 创建核心组件
+        self._context_manager = ContextManager(
+            max_messages=self.config.max_messages,
+            max_tokens=self.config.max_tokens,
+            compression_threshold=self.config.compression_threshold_messages,
+        )
+
+        self._session_manager = SessionManager(
+            storage=self._storage,
+            max_sessions=self.config.max_sessions,
+            auto_cleanup=self.config.auto_cleanup,
+        )
+
+        self._summarizer = Summarizer(
+            model_name=self.config.compression_model,
+        )
+
+        if self.config.enable_long_term:
+            self._long_term = LongTermMemory(
+                storage=self._storage,
+                enabled=True,
+            )
+
+        # 创建长期归档压缩器
+        if self.config.long_term_compression_enabled:
+            self._archive_compressor = ArchiveCompressor(
+                storage=self._storage,
+                summarizer=self._summarizer,
+                config=self.config,
+            )
+
+        # 从存储加载所有会话信息
+        await self._session_manager.load_all_sessions()
+
+        # 如果没有会话，创建一个新会话
+        sessions = self._session_manager.list_sessions()
+        if not sessions:
+            await self._session_manager.new_session("default")
+        else:
+            # 如果已有会话，自动切换到最近更新的会话
+            latest_session = sessions[0]  # list_sessions 已经按更新时间倒序
+            await self._session_manager.switch_session(latest_session.session_id)
+
+        # 启动时自动压缩不活跃会话
+        if (
+            self.config.long_term_compression_enabled
+            and self.config.compress_on_startup
+            and self._archive_compressor is not None
+        ):
+            # Run in background to avoid blocking startup
+            asyncio.create_task(self._background_auto_compress())
+
+        self._initialized = True
+        logger.info("MemoryManager initialized successfully (legacy mode)")
+
+    async def _background_auto_compress(self) -> None:
+        """Background task for auto-compression on startup"""
+        await asyncio.sleep(2.0)  # Wait a bit for app to stabilize
+        try:
+            count = await self.compress_all_eligible()
+            if count > 0:
+                logger.info(
+                    f"Background auto-compression completed: {count} sessions compressed"
+                )
+        except Exception as e:
+            logger.error(f"Background auto-compression failed: {e}", exc_info=True)
+
+    async def new_session(self, title: Optional[str] = None) -> SessionInfo:
+        """创建新会话"""
+        assert self._initialized
+        return await self.session_manager.new_session(title)
+
+    async def switch_session(self, session_id: str) -> bool:
+        """切换会话"""
+        assert self._initialized
+        return await self.session_manager.switch_session(session_id)
+
+    def list_sessions(self) -> List[SessionInfo]:
+        """列出所有会话"""
+        assert self._initialized
+        return self.session_manager.list_sessions()
+
+    async def delete_current_session(self) -> bool:
+        """删除当前会话"""
+        assert self._initialized
+        success = await self.session_manager.delete_current_session()
+        if success and not self.session_manager.list_sessions():
+            await self.session_manager.new_session("default")
+        return success
+
+    def add_message(self, message: Message) -> ConversationTurn | None:
+        """添加消息到当前会话
+
+        When MCP is enabled, adds to MCP context and returns None.
+        """
+        assert self._initialized
+
+        if self._mcp is not None:
+            # Convert to MCP message
+            from internal.mcp.protocol import MCPParticipant
+
+            role_map = {
+                "system": MCPParticipant.SYSTEM,
+                "user": MCPParticipant.USER,
+                "assistant": MCPParticipant.ASSISTANT,
+                "tool": MCPParticipant.TOOL,
+            }
+            role_str = message.get("role", "user")
+            role = role_map.get(role_str, MCPParticipant.USER)
+            content = message.get("content", "")
+
+            # Handle list content (multimodal)
+            if isinstance(content, list):
+                content = " ".join(
+                    item.get("text", "") if isinstance(item, dict) else str(item)
+                    for item in content
+                )
+
+            mcp_message = MCPMessage.create(
+                role=role,
+                content=content,
+                tokens=message.get("tokens"),
+                tool_name=message.get("tool_name"),
+                tool_call_id=message.get("tool_call_id"),
+                metadata=message.get("metadata", {}),
+            )
+
+            # Add to MCP context manager
+            import asyncio
+
+            asyncio.create_task(self._mcp.add_message(mcp_message))
+            return None
+
+        # Legacy mode
+        return self.session_manager.add_turn(message)
+
+    async def get_current_messages(self) -> List[Message]:
+        """获取当前会话所有消息
+
+        When MCP is enabled, get messages from MCP context and convert to legacy format.
+        """
+        assert self._initialized
+
+        if self._mcp is not None:
+            # Get context from MCP
+            response = await self._mcp.get_context()
+            # Convert back to legacy format
+            legacy_messages: List[Message] = []
+            for msg in response.messages:
+                legacy_msg: Message = {
+                    "role": msg.role.value,
+                    "content": msg.content,
+                    "tokens": msg.tokens,
+                    "tool_name": msg.tool_name,
+                    "tool_call_id": msg.tool_call_id,
+                    "metadata": msg.metadata,
+                }
+                legacy_messages.append(legacy_msg)
+            return legacy_messages
+
+        # Legacy mode
+        return self.session_manager.get_messages()
+
+    def should_compress(self) -> bool:
+        """检查是否需要压缩上下文
+
+        MCP handles compression automatically in background.
+        """
+        if not self.config.compression_enabled:
+            return False
+        assert self._initialized
+
+        if self._mcp is not None:
+            # MCP auto-compresses in background, no need for manual trigger
+            return False
+
+        return self.context_manager.should_compress(self.session_manager)
+
+    async def compress_current(
+        self,
+        summary_text: str,
+    ) -> bool:
+        """使用摘要压缩当前上下文"""
+        assert self._initialized
+        turns = self.session_manager.get_turns()
+        if len(turns) <= self.config.compression_threshold_messages:
+            return False
+
+        # 找到需要压缩的范围：压缩除了最后几条之外的旧消息
+        start_idx = 0
+        # 跳过system prompt
+        for i, turn in enumerate(turns):
+            if turn.message.get("role", "") != "system":
+                start_idx = i
+                break
+
+        end_idx = len(turns) - 5  # 保留最后4条不压缩
+
+        if end_idx <= start_idx:
+            return False
+
+        new_turns, summary_entry = self.summarizer.compress_old_messages(
+            turns, summary_text, start_idx, end_idx
+        )
+
+        # 替换当前会话的轮次
+        assert self.session_manager._current_session_id is not None
+        session_id = self.session_manager._current_session_id
+        self.session_manager._sessions[session_id] = new_turns
+        self.session_manager._update_session_info()
+        await self.save_current()
+
+        logger.info(f"Compressed context: {len(turns)} -> {len(new_turns)} messages")
+        return True
+
+    async def save_current(self) -> None:
+        """保存当前会话到存储"""
+        assert self._initialized
+        if self._mcp is not None:
+            # MCP handles persistence internally
+            return
+        await self.session_manager.save_current()
+
+    async def inject_long_term(
+        self,
+        current_query: str,
+        system_prompt: str,
+        limit: int = 5,
+    ) -> str:
+        """注入相关长期记忆到system prompt"""
+        if self.long_term is None or not self.config.enable_long_term:
+            return system_prompt
+
+        entries = await self.long_term.query_relevant(current_query, limit)
+        if not entries:
+            return system_prompt
+
+        injection = self.long_term.build_injection_prompt(entries)
+        return system_prompt + injection
+
+    async def estimate_total_tokens(self) -> int:
+        """估算当前上下文token数"""
+        assert self._initialized
+
+        if self._mcp is not None:
+            response = await self._mcp.get_context()
+            return response.total_tokens
+
+        messages = await self.get_current_messages()
+        return self.context_manager.estimate_total_tokens(messages)
+
+    def current_session_info(self) -> Optional[SessionInfo]:
+        """获取当前会话信息"""
+        assert self._initialized
+        return self.session_manager.current_info
+
+    # === Long-term archive compression API ===
+    async def list_compressible_sessions(self) -> List[SessionInfo]:
+        """List all sessions eligible for compression"""
+        assert self._initialized
+        if self._archive_compressor is None:
+            return []
+        return await self._archive_compressor.find_compressible_sessions()
+
+    async def compress_session(self, session_id: str, summary_text: str) -> bool:
+        """Compress a specific session with the given summary"""
+        assert self._initialized
+        if self._archive_compressor is None:
+            return False
+        return await self._archive_compressor.compress_session_with_summary(
+            session_id, summary_text
+        )
+
+    async def compress_all_eligible(self) -> int:
+        """Compress all eligible inactive sessions
+
+        Returns number of sessions compressed.
+        Currently uses lazy compression - just identifies candidates.
+        Full compression happens when session is opened.
+        """
+        assert self._initialized
+        if self._archive_compressor is None:
+            return 0
+        return await self._archive_compressor.compress_all_eligible()
+
+    # === End long-term archive compression API ===
