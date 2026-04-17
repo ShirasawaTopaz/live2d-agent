@@ -69,6 +69,37 @@ class OllamaModel(ModelTrait):
         OllamaModel._client_cache[model_name] = client
         return client
 
+    @staticmethod
+    def _normalize_chat_message(response: Any) -> dict:
+        """Normalize Ollama SDK chat responses to the repo's message shape."""
+        if isinstance(response, dict):
+            message = response.get("message", {})
+            if isinstance(message, dict):
+                return message
+            response = message
+
+        nested_message = getattr(response, "message", None)
+        message_source = nested_message if nested_message is not None else response
+
+        message_dict = {
+            "role": getattr(message_source, "role", getattr(response, "role", "assistant")),
+            "content": getattr(
+                message_source,
+                "content",
+                getattr(response, "content", ""),
+            ),
+        }
+
+        tool_calls = getattr(
+            message_source,
+            "tool_calls",
+            getattr(response, "tool_calls", None),
+        )
+        if tool_calls:
+            message_dict["tool_calls"] = tool_calls
+
+        return message_dict
+
     async def chat(
         self,
         message: str | None,
@@ -110,39 +141,45 @@ class OllamaModel(ModelTrait):
                 if use_tools:
                     self._tools_supported = True
                     
-                message_dict = response.get("message", {})
-                
+                message_dict = self._normalize_chat_message(response)
+
                 # If using native tool calls or not using tools, return directly
-                if not use_tools or "tool_calls" in message_dict:
+                if not use_tools or (isinstance(message_dict, dict) and "tool_calls" in message_dict) or hasattr(message_dict, "tool_calls"):
                     self.history.append(message_dict)
                     return message_dict
-                    
-                # For text-based tool call extraction, check if parsing succeeds
+
+                # For text-based tool call extraction, only extract if content looks like it contains tool calls
                 content = message_dict.get("content", "")
                 if content:
-                    extracted = ToolCallParser.extract_tool_calls_from_text(content)
-                    if extracted or attempt == max_retries:
-                        # Either we extracted tool calls or it's the last attempt
-                        if extracted:
-                            message_dict["tool_calls"] = extracted
+                    # Only attempt to extract tool calls if content contains tool call markers
+                    if "<tool_call>" in content or "```json" in content:
+                        extracted = ToolCallParser.extract_tool_calls_from_text(content)
+                        if extracted or attempt == max_retries:
+                            # Either we extracted tool calls or it's the last attempt
+                            if extracted:
+                                message_dict["tool_calls"] = extracted
+                            self.history.append(message_dict)
+                            return message_dict
+                        else:
+                            # Parsing failed, ask model to correct the format
+                            error_msg = (
+                                "Failed to parse tool call. "
+                                "Please check the format and provide the tool call in correct JSON format."
+                            )
+                            logging.warning(
+                                f"Tool call parsing failed on attempt {attempt+1}/{max_retries}, asking for correction"
+                            )
+                            self.history.append(message_dict)
+                            self.history.append({
+                                "role": "user",
+                                "content": error_msg
+                            })
+                            last_response = message_dict
+                            continue
+                    else:
+                        # Content doesn't contain tool call markers, return directly
                         self.history.append(message_dict)
                         return message_dict
-                    else:
-                        # Parsing failed, ask model to correct the format
-                        error_msg = (
-                            "Failed to parse tool call. "
-                            "Please check the format and provide the tool call in correct JSON format."
-                        )
-                        logging.warning(
-                            f"Tool call parsing failed on attempt {attempt+1}/{max_retries}, asking for correction"
-                        )
-                        self.history.append(message_dict)
-                        self.history.append({
-                            "role": "user",
-                            "content": error_msg
-                        })
-                        last_response = message_dict
-                        continue
                 else:
                     # No content, check for tool_calls
                     self.history.append(message_dict)
@@ -165,7 +202,7 @@ class OllamaModel(ModelTrait):
                         tools=None,
                         stream=False,
                     )
-                    message_dict = response.get("message", {})
+                    message_dict = self._normalize_chat_message(response)
                     self.history.append(message_dict)
                     return message_dict
                 else:
@@ -217,7 +254,7 @@ class OllamaModel(ModelTrait):
                 )
                 if use_tools:
                     self._tools_supported = True
-                message_dict = response.get("message", {})
+                message_dict = self._normalize_chat_message(response)
                 self.history.append(message_dict)
                 # 完整返回 message_dict 以便上层能检测到 tool_calls
                 result = message_dict.copy()

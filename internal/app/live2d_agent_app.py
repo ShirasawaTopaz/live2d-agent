@@ -27,6 +27,7 @@ class Live2DAgentApp:
         self.ws: ReconnectingWebSocket | None = None
         self.config: Any = None
         self._processing = False
+        self._context_lock = asyncio.Lock()
         self.runtime_state = QueueRuntimeCoordinator()
         self.runtime = ApplicationRuntime(
             process_events=self._process_events,
@@ -49,6 +50,7 @@ class Live2DAgentApp:
             on_message_sent=self.on_message_sent,
             on_visibility_changed=self.on_visibility_changed,
             on_close_requested=self.quit,
+            on_clear_context_requested=self.on_clear_context_requested,
         )
         if self.ws is not None:
             self.runtime_state.attach(self.ws)
@@ -82,21 +84,45 @@ class Live2DAgentApp:
         logger.info("用户输入: %s", text)
         asyncio.create_task(self.process_message(text))
 
+    def on_clear_context_requested(self) -> None:
+        logger.info("请求清空当前上下文")
+        asyncio.create_task(self.reset_context())
+
     async def process_message(self, text: str) -> None:
-        if self._processing:
-            logger.warning("Already processing a message, skipping duplicate")
-            return
-        self._processing = True
-        try:
-            await process_chat_message(
-                text=text,
-                input_box=self.input_box,
-                agent=self.agent,
-                websocket=self.ws,
-                is_running=self.runtime_state.is_running,
-            )
-        finally:
-            self._processing = False
+        async with self._context_lock:
+            if self._processing:
+                logger.warning("Already processing a message, skipping duplicate")
+                return
+            self._processing = True
+            try:
+                await process_chat_message(
+                    text=text,
+                    input_box=self.input_box,
+                    agent=self.agent,
+                    websocket=self.ws,
+                    is_running=self.runtime_state.is_running,
+                )
+            finally:
+                self._processing = False
+
+    async def reset_context(self) -> None:
+        async with self._context_lock:
+            if self.agent is None:
+                return
+
+            if getattr(self.agent, "memory", None) is not None:
+                if not self.agent.memory._initialized:
+                    await self.agent.initialize_memory()
+
+                await self.agent.memory.reset_active_context("default")
+                self.agent.model.history = (
+                    await self.agent.memory.get_current_messages()
+                ).copy()
+            else:
+                self.agent.model.history = []
+
+            if self.input_box is not None:
+                self.input_box.clear_input()
 
     def on_visibility_changed(self, is_visible: bool) -> None:
         logger.debug("输入框可见性变化: %s", is_visible)

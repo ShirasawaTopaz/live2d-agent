@@ -6,6 +6,7 @@ Memory System Main Manager - Reference Implementation
 import asyncio
 import logging
 import os
+from collections.abc import Coroutine
 from typing import List, Optional
 
 from internal.memory._types import (
@@ -65,6 +66,7 @@ class MemoryManager:
 
         # MCP integration
         self._mcp: Optional[MCPContextManager] = None
+        self._pending_mcp_tasks: set[asyncio.Task[None]] = set()
 
         self._initialized = False
 
@@ -127,8 +129,10 @@ class MemoryManager:
                 remote_backend = RemoteMCPBackend(mcp_config.remote)
                 self._mcp.set_storage(remote_backend)
 
-            # Switch to default scope
+            # Switch to default scope, but always start each app launch with a
+            # fresh active context instead of reusing the previously loaded one.
             await self._mcp.switch_scope("default")
+            await self._mcp.clear_scope("default")
 
             self._initialized = True
             logger.info("MemoryManager initialized with MCP successfully")
@@ -173,14 +177,9 @@ class MemoryManager:
         # 从存储加载所有会话信息
         await self._session_manager.load_all_sessions()
 
-        # 如果没有会话，创建一个新会话
-        sessions = self._session_manager.list_sessions()
-        if not sessions:
-            await self._session_manager.new_session("default")
-        else:
-            # 如果已有会话，自动切换到最近更新的会话
-            latest_session = sessions[0]  # list_sessions 已经按更新时间倒序
-            await self._session_manager.switch_session(latest_session.session_id)
+        # 启动时始终创建一个新会话，避免重新打开应用时继续上次的活动上下文。
+        # 已有会话仍然会被加载到内存并保留在存储中，仅不再自动恢复为当前会话。
+        await self._session_manager.new_session("default")
 
         # 启动时自动压缩不活跃会话
         if (
@@ -210,6 +209,17 @@ class MemoryManager:
         """创建新会话"""
         assert self._initialized
         return await self.session_manager.new_session(title)
+
+    async def reset_active_context(self, title: Optional[str] = None) -> None:
+        """清空当前活动上下文，并为后续对话准备一个干净状态。"""
+        assert self._initialized
+
+        if self._mcp is not None:
+            await self._drain_pending_mcp_tasks()
+            await self._mcp.clear_scope()
+            return
+
+        await self.session_manager.new_session(title)
 
     async def switch_session(self, session_id: str) -> bool:
         """切换会话"""
@@ -266,10 +276,9 @@ class MemoryManager:
                 metadata=message.get("metadata", {}),
             )
 
-            # Add to MCP context manager
-            import asyncio
-
-            asyncio.create_task(self._mcp.add_message(mcp_message))
+            # Add to MCP context manager and keep track of pending writes so
+            # reset/get-context operations can wait for them deterministically.
+            self._track_mcp_task(self._mcp.add_message(mcp_message))
             return None
 
         # Legacy mode
@@ -283,6 +292,7 @@ class MemoryManager:
         assert self._initialized
 
         if self._mcp is not None:
+            await self._drain_pending_mcp_tasks()
             # Get context from MCP
             response = await self._mcp.get_context()
             # Convert back to legacy format
@@ -389,6 +399,17 @@ class MemoryManager:
 
         messages = await self.get_current_messages()
         return self.context_manager.estimate_total_tokens(messages)
+
+    def _track_mcp_task(self, coroutine: Coroutine[object, object, None]) -> None:
+        task = asyncio.create_task(coroutine)
+        self._pending_mcp_tasks.add(task)
+        task.add_done_callback(self._pending_mcp_tasks.discard)
+
+    async def _drain_pending_mcp_tasks(self) -> None:
+        if not self._pending_mcp_tasks:
+            return
+        pending = tuple(self._pending_mcp_tasks)
+        await asyncio.gather(*pending)
 
     def current_session_info(self) -> Optional[SessionInfo]:
         """获取当前会话信息"""

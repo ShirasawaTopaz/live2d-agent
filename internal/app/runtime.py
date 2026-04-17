@@ -13,12 +13,14 @@ def connect_input_signals(
     on_message_sent: Callable[[str], None],
     on_visibility_changed: Callable[[bool], None],
     on_close_requested: Callable[[], None],
+    on_clear_context_requested: Callable[[], None],
 ) -> None:
     if input_box is None:
         return
     input_box.message_sent.connect(on_message_sent)
     input_box.visibility_changed.connect(on_visibility_changed)
     input_box.close_requested.connect(on_close_requested)
+    input_box.clear_context_requested.connect(on_clear_context_requested)
 
 
 async def process_chat_message(

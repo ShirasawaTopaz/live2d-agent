@@ -265,12 +265,26 @@ class ChatService:
     @staticmethod
     def _extract_tool_call_identity(tool_call: Any) -> tuple[str, str]:
         if isinstance(tool_call, dict):
-            return tool_call.get("function", {}).get("name", ""), tool_call.get("id", "")
+            return tool_call.get("function", {}).get("name", ""), tool_call.get("id", ToolCallParser.generate_tool_call_id())
 
         function_name = ""
-        if hasattr(tool_call, "function") and hasattr(tool_call.function, "name"):
-            function_name = tool_call.function.name
         tool_call_id = getattr(tool_call, "id", "") if hasattr(tool_call, "id") else ""
+
+        if hasattr(tool_call, "function"):
+            func = tool_call.function
+            if hasattr(func, "name"):
+                function_name = func.name
+            elif isinstance(func, dict) and "name" in func:
+                function_name = func["name"]
+
+        # If still no function name, try direct access
+        if not function_name and hasattr(tool_call, "name"):
+            function_name = tool_call.name
+
+        # Generate an ID if none exists
+        if not tool_call_id:
+            tool_call_id = ToolCallParser.generate_tool_call_id()
+
         return function_name, tool_call_id
 
     @staticmethod

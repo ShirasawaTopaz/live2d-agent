@@ -60,7 +60,6 @@ class BubbleWidget(QWidget):
         self.displayed_text: str = ""
         self.char_index: int = 0
         self._scroll_x: float = 0.0
-        self.cursor_visible: bool = True
         self._scroll_animation: Optional[QPropertyAnimation] = None
 
         # 打字机效果
@@ -93,12 +92,6 @@ class BubbleWidget(QWidget):
 
         # 打字机定时器
         self._typewriter_timer.timeout.connect(self._on_typewriter_tick)
-
-        # 光标闪烁定时器
-        self._cursor_timer = QTimer(self)
-        self._cursor_timer.setInterval(500)
-        self._cursor_timer.timeout.connect(self._toggle_cursor)
-        self._cursor_timer.start()
 
         # 主题
         saved_theme = self._settings.value("theme", "dark")
@@ -153,7 +146,6 @@ class BubbleWidget(QWidget):
         """自定义绘制 - 纯QPainter实现文字效果
         - 8方向描边发光效果
         - 当前行文字渐变填充
-        - 闪烁光标
         - 水平滚动效果
         - 半透明背景提高可读性
         """
@@ -253,16 +245,6 @@ class BubbleWidget(QWidget):
                         painter.setBrush(Qt.BrushStyle.NoBrush)
                         painter.drawGlyphRun(QPointF(0, 0), glyph_run)
 
-            if self.cursor_visible and self.isVisible():
-                cursor_x = x + text_width
-                cursor_y = y - font_metrics.ascent()
-                cursor_height = font_metrics.height()
-                if self._theme == "dark":
-                    painter.setPen(QPen(self.GRADIENT_START_DARK, 2))
-                else:
-                    painter.setPen(QPen(self.GRADIENT_START_LIGHT, 2))
-                painter.drawLine(cursor_x, cursor_y, cursor_x, cursor_y + cursor_height)
-
         painter.end()
         super().paintEvent(event)
 
@@ -286,8 +268,6 @@ class BubbleWidget(QWidget):
         # 停止任何正在进行的滚动动画
         if self._scroll_animation is not None and self._scroll_animation.state() == QPropertyAnimation.State.Running:
             self._scroll_animation.stop()
-
-        # 光标定时器保持运行 - it just toggles visibility, no need to stop
 
         # 清空所有文本状态
         self._content = ""
@@ -507,13 +487,13 @@ class BubbleWidget(QWidget):
 
     def _calculate_scroll_duration(self, scroll_distance: float) -> int:
         char_count = len(self.displayed_text)
-        # 降低基础速度，减慢滚动
-        speed = 0.15 + 0.15 * math.log2(max(char_count, 1))
+        # 调整滚动速度，确保长文本有足够阅读时间
+        speed = 0.10 + 0.10 * math.log2(max(char_count, 1))
         duration = abs(scroll_distance) / speed
-        # 延长25倍动画时间（5倍基础上再延长5倍）
-        duration *= 25
-        # 增加最小时长，确保滚动更平滑
-        return int(max(2500, min(duration, 20000)))
+        # 延长动画时间，确保用户有充足时间阅读
+        duration *= 40
+        # 增加最小/最大时长限制
+        return int(max(4000, min(duration, 45000)))
 
     def update_text_wrap(self):
         """更新文本显示 - 保持单行并添加水平滚动效果"""
@@ -579,11 +559,6 @@ class BubbleWidget(QWidget):
             'emoji'
         }
         return any(ef in family_name.lower() for ef in emoji_font_names)
-
-    def _toggle_cursor(self):
-        """切换光标可见性实现闪烁效果"""
-        self.cursor_visible = not self.cursor_visible
-        self.update()
 
     # Qt Property for scroll_x animation
     @Property(float)

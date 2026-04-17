@@ -28,7 +28,7 @@ class FloatingInputBox(QWidget):
     - 支持拖动定位
     - 支持主题切换
     - 集成历史记录管理
-    - 支持创建新的上下文窗口
+    - 支持清空当前活动上下文
     """
 
 
@@ -37,7 +37,7 @@ class FloatingInputBox(QWidget):
     visibility_changed = Signal(bool)  # 可见性变化时触发 (is_visible,)
     input_changed = Signal(str)  # 输入内容变化时触发 (text,)
     close_requested = Signal()  # 点击标题栏关闭按钮时触发
-    new_context_requested = Signal()  # 请求创建新上下文窗口时触发
+    clear_context_requested = Signal()  # 请求清空当前活动上下文时触发
 
     def __init__(
         self,
@@ -138,11 +138,11 @@ class FloatingInputBox(QWidget):
         self.history_btn.setToolTip("浏览历史 (Ctrl+↑/↓)")
         self.bottom_bar.addWidget(self.history_btn)
 
-        # 新上下文按钮
-        self.new_context_btn = QPushButton("新上下文", self)
+        # 清空上下文按钮
+        self.new_context_btn = QPushButton("清空上下文", self)
         self.new_context_btn.setObjectName("toolBtn")
-        self.new_context_btn.setToolTip("创建新的上下文窗口")
-        self.new_context_btn.clicked.connect(self.on_new_context_clicked)
+        self.new_context_btn.setToolTip("清空当前活动上下文")
+        self.new_context_btn.clicked.connect(self.on_clear_context_clicked)
         self.bottom_bar.addWidget(self.new_context_btn)
 
         # 模式切换复选框
@@ -290,9 +290,9 @@ class FloatingInputBox(QWidget):
         self.close_requested.emit()
 
     @Slot()
-    def on_new_context_clicked(self):
-        """新上下文按钮点击 - 触发创建新上下文窗口请求"""
-        self.new_context_requested.emit()
+    def on_clear_context_clicked(self):
+        """清空上下文按钮点击 - 触发清空当前活动上下文请求"""
+        self.clear_context_requested.emit()
 
     @Slot()
     def on_text_changed(self):

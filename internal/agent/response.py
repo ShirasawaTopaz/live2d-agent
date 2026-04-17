@@ -22,30 +22,67 @@ class ToolCallParser:
                     if extracted:
                         return extracted
             return None
-        # Handle ChatCompletionMessage object from OpenAI SDK
+
+        # Handle ChatCompletionMessage-like object (Ollama/OpenAI SDK)
         if hasattr(response_message, "tool_calls"):
             if response_message.tool_calls is None:
                 return None
             tool_calls = []
             for tc in response_message.tool_calls:
-                if (
-                    hasattr(tc, "id")
-                    and hasattr(tc, "type")
-                    and hasattr(tc, "function")
-                ):
+                if tc is None:
+                    continue
+
+                # Get tool call ID - may or may not exist
+                tool_call_id = getattr(tc, "id", None) or ToolCallParser.generate_tool_call_id()
+                tool_call_type = getattr(tc, "type", "function")
+
+                # Get function object - check both tc.function and tc.get("function")
+                func = None
+                if hasattr(tc, "function"):
                     func = tc.function
-                    tool_call_dict = {
-                        "id": tc.id,
-                        "type": tc.type,
-                        "function": {
-                            "name": func.name if hasattr(func, "name") else "",
-                            "arguments": func.arguments
-                            if hasattr(func, "arguments")
-                            else "{}",
-                        },
-                    }
-                    tool_calls.append(tool_call_dict)
+                elif isinstance(tc, dict) and "function" in tc:
+                    func = tc["function"]
+
+                if func is None:
+                    continue
+
+                # Extract function name and arguments
+                func_name = ""
+                if hasattr(func, "name"):
+                    func_name = func.name
+                elif isinstance(func, dict) and "name" in func:
+                    func_name = func["name"]
+
+                func_args = "{}"
+                if hasattr(func, "arguments"):
+                    func_args = func.arguments
+                elif isinstance(func, dict) and "arguments" in func:
+                    func_args = func["arguments"]
+
+                # If arguments is already a dict, use it directly
+                if isinstance(func_args, dict):
+                    arguments_dict = func_args
+                else:
+                    # Otherwise try to parse it as JSON
+                    try:
+                        if func_args and isinstance(func_args, str):
+                            arguments_dict = json.loads(func_args)
+                        else:
+                            arguments_dict = {}
+                    except json.JSONDecodeError:
+                        arguments_dict = {}
+
+                tool_call_dict = {
+                    "id": tool_call_id,
+                    "type": tool_call_type,
+                    "function": {
+                        "name": func_name,
+                        "arguments": arguments_dict,
+                    },
+                }
+                tool_calls.append(tool_call_dict)
             return tool_calls if tool_calls else None
+
         # Handle plain text response that might contains tool call
         if isinstance(response_message, str):
             return ToolCallParser.extract_tool_calls_from_text(response_message)
@@ -215,21 +252,29 @@ class ToolCallParser:
 
     @staticmethod
     def parse_arguments(tool_call: Any) -> dict:
-        """解析 tool_call 中的 arguments（JSON 字符串 -> dict）"""
+        """解析 tool_call 中的 arguments（支持 JSON 字符串或 dict）"""
         if isinstance(tool_call, dict):
-            arguments_str = tool_call.get("function", {}).get("arguments", "{}")
+            arguments = tool_call.get("function", {}).get("arguments", {})
+            if isinstance(arguments, str):
+                try:
+                    return json.loads(arguments)
+                except json.JSONDecodeError:
+                    return {}
+            return arguments or {}
         else:
-            # Handle function object from OpenAI SDK
-            if hasattr(tool_call, "function") and hasattr(
-                tool_call.function, "arguments"
-            ):
-                arguments_str = tool_call.function.arguments
-            else:
-                arguments_str = "{}"
-
-        if isinstance(arguments_str, str):
-            return json.loads(arguments_str)
-        return arguments_str
+            # Handle object with function attribute
+            if hasattr(tool_call, "function"):
+                func = tool_call.function
+                if hasattr(func, "arguments"):
+                    func_args = func.arguments
+                    if isinstance(func_args, dict):
+                        return func_args
+                    if isinstance(func_args, str):
+                        try:
+                            return json.loads(func_args)
+                        except json.JSONDecodeError:
+                            return {}
+            return {}
 
     @staticmethod
     def generate_tool_call_id() -> str:
