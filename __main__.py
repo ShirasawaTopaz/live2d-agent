@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from internal.app.live2oder_app import Live2oderApp
+from internal.app.live2d_agent_app import Live2DAgentApp
 
 
 logging.basicConfig(
@@ -12,4 +12,4 @@ logging.basicConfig(
 
 
 if __name__ == "__main__":
-    asyncio.run(Live2oderApp().run())
+    asyncio.run(Live2DAgentApp().run())

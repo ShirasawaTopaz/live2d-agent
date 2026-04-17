@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Live2oder packaging orchestrator for the PyInstaller spec build."""
+"""Live2D Agent packaging orchestrator for the PyInstaller spec build."""
 
 from __future__ import annotations
 
@@ -13,9 +13,9 @@ from dataclasses import dataclass
 from importlib.util import find_spec
 from pathlib import Path
 
-PROJECT_NAME = "live2oder"
+PROJECT_NAME = "live2d-agent"
 VERSION = "0.1.0"
-SPEC_FILE = Path("live2oder.spec")
+SPEC_FILE = Path("live2d-agent.spec")
 DIST_ROOT = Path("dist")
 BUILD_ROOT = Path("build")
 OUTPUT_DIR = DIST_ROOT / f"{PROJECT_NAME}-{VERSION}"
@@ -32,7 +32,7 @@ class InventoryItem:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Build or verify the Live2oder packaging output."
+        description="Build or verify the Live2D Agent packaging output."
     )
     parser.add_argument(
         "command",
@@ -213,7 +213,7 @@ def show_result() -> None:
 
 
 def run_build() -> None:
-    print(f"Live2oder packaging build v{VERSION}")
+    print(f"Live2D Agent packaging build v{VERSION}")
     print(f"System: {platform.system()} {platform.release()}")
     print(f"Python: {sys.version}")
     print()

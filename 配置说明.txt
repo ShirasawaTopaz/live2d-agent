@@ -3,6 +3,6 @@
 
 1. 将 config.example.json 或 config.example-prompt-modules.json 复制为 config.json
 2. 编辑 config.json，填入你的 Live2D WebSocket 地址和 AI 模型配置
-3. 运行 live2oder（Windows: live2oder.exe）启动应用
+3. 运行 live2d-agent（Windows: live2d-agent.exe）启动应用
 
 详细文档请查看 README.md 和 USER_GUIDE.md

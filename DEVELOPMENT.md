@@ -40,8 +40,8 @@ Before you begin, ensure you have the following installed:
 2. Clone your forked repository locally:
 
 ```bash
-git clone https://github.com/your-username/live2oder.git
-cd live2oder
+git clone https://github.com/your-username/live2d-agent.git
+cd live2d-agent
 ```
 
 ### Installing Dependencies
@@ -110,7 +110,7 @@ If the application starts without errors, your development environment is ready.
 Live2oder follows a modular architecture organized into these top-level directories:
 
 ```
-live2oder/
+live2d-agent/
 ├── .claude/              # Claude AI settings
 ├── .pytest_cache/        # pytest cache directory
 ├── .ruff_cache/          # Ruff linter cache
@@ -147,7 +147,7 @@ live2oder/
 - `config.example.json` - Main configuration template
 - `config.example-prompt-modules.json` - Prompt module configuration template
 - `build.py` - PyInstaller build script for creating distributable executables
-- `live2oder.spec` - PyInstaller specification file
+- `live2d-agent.spec` - PyInstaller specification file
 - `CLAUDE.md` - Development guidance for AI coding assistants
 - `README.md` - Project overview and quick start guide
 

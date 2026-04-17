@@ -15,7 +15,7 @@ from internal.websocket.reconnect import ReconnectingWebSocket
 logger = logging.getLogger(__name__)
 
 
-class Live2oderApp:
+class Live2DAgentApp:
     """Thin façade coordinating bootstrap, runtime, and tray concerns."""
 
     def __init__(self) -> None:

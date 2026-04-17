@@ -51,8 +51,8 @@ If all commands output version numbers, you're good to go.
 Clone the Live2oder source code from GitHub to your local machine:
 
 ```bash
-git clone https://github.com/yourusername/live2oder.git
-cd live2oder
+git clone https://github.com/yourusername/live2d-agent.git
+cd live2d-agent
 ```
 
 Replace `yourusername` with the actual repository path if you're cloning from a different location.
@@ -1244,7 +1244,7 @@ Both JSON and SQLite storage keep all data on your local machine when using loca
 
 ### Overview
 
-Live2oder can be built into a standalone executable that can be distributed and run without requiring users to install Python or any dependencies. The project uses PyInstaller for this purpose, and includes a pre-configured build script that drives the checked-in `live2oder.spec` manifest.
+Live2oder can be built into a standalone executable that can be distributed and run without requiring users to install Python or any dependencies. The project uses PyInstaller for this purpose, and includes a pre-configured build script that drives the checked-in `live2d-agent.spec` manifest.
 
 This is ideal if you want to:
 - Distribute Live2oder to users who aren't comfortable with Python development
@@ -1270,7 +1270,7 @@ poetry run python build.py
 
 The script handles everything automatically:
 1. Fails fast with a clear message if PyInstaller is missing from the active environment
-2. Runs PyInstaller using `live2oder.spec` as the single packaging manifest
+2. Runs PyInstaller using `live2d-agent.spec` as the single packaging manifest
 3. Materializes the packaged artifact inventory into a versioned output directory
 4. Verifies that the expected executable, asset directories, config templates, and docs are present
 
@@ -1281,7 +1281,7 @@ If you have a `skills` directory with custom skills, or prompt modules under `pr
 The build process:
 - Uses **PyInstaller** to bundle Python and all dependencies into a single executable
 - Creates a **one-file output** that includes everything needed to run the application
-- Reads hidden imports and packaged data from `live2oder.spec`
+- Reads hidden imports and packaged data from `live2d-agent.spec`
 - Excludes development-only packages to reduce output size
 - Copies the verified distribution inventory (configuration templates, skills, prompt modules, documentation, etc.) to the output directory
 
@@ -1290,11 +1290,11 @@ The build process:
 After the build completes successfully, you can find the output in:
 
 ```
-dist/live2oder-<version>/
+dist/live2d-agent-<version>/
 ```
 
 Inside this directory you'll find:
-- `live2oder.exe` (on Windows) or `live2oder` (on macOS/Linux) - the main executable
+- `live2d-agent.exe` (on Windows) or `live2d-agent` (on macOS/Linux) - the main executable
 - `skills/` - packaged skill definitions distributed alongside the executable
 - `prompt_modules/` - packaged prompt module files for modular prompt configs
 - `config.example.json` - configuration template for end users
@@ -1319,8 +1319,8 @@ PyInstaller can use a lot of memory when bundling large applications like Live2o
 
 Sometimes PyInstaller misses modules that are dynamically imported at runtime. If your built executable crashes with "No module named" errors:
 
-- Update `live2oder.spec`, because it is the single source of truth for PyInstaller hidden imports and packaged data.
-- If you add new runtime assets such as prompt modules or config templates, add them to `live2oder.spec` so the build inventory and verification step pick them up automatically.
+- Update `live2d-agent.spec`, because it is the single source of truth for PyInstaller hidden imports and packaged data.
+- If you add new runtime assets such as prompt modules or config templates, add them to `live2d-agent.spec` so the build inventory and verification step pick them up automatically.
 - After adding missing modules, run the build again.
 
 #### Antivirus False Positives
@@ -1344,14 +1344,14 @@ PySide6 is the Qt binding used for the UI. Sometimes PyInstaller can have issues
 
 To distribute the built executable to users:
 
-1. After the build completes, go to the output directory: `dist/live2oder-<version>/`
+1. After the build completes, go to the output directory: `dist/live2d-agent-<version>/`
 2. Compress the entire directory into a ZIP archive
 3. Distribute the ZIP file through your preferred method (website, GitHub releases, etc.)
 4. Instruct users to:
    - Extract the ZIP file to a location on their computer
    - Copy `config.example.json` to `config.json`
    - Edit `config.json` to add their Live2D WebSocket URL and AI model configuration
-   - Run `live2oder.exe` (Windows) or `live2oder` (macOS/Linux) to start the application
+   - Run `live2d-agent.exe` (Windows) or `live2d-agent` (macOS/Linux) to start the application
 
 No installation is required - users can run the executable directly from the directory.
 
@@ -1368,7 +1368,7 @@ What code signing does:
 You can purchase a code signing certificate from a trusted certificate authority. On Windows, you sign the executable after building with:
 
 ```bash
-signtool sign /f your-certificate.pfx /p your-password /d Live2oder /fd SHA256 dist\live2oder-version\live2oder.exe
+signtool sign /f your-certificate.pfx /p your-password /d Live2oder /fd SHA256 dist\live2d-agent-version\live2d-agent.exe
 ```
 
 On macOS, you can sign with your Apple Developer certificate through Xcode.
@@ -1563,4 +1563,4 @@ If you can't find your problem here, you can open an issue on GitHub. When openi
 5. What you've already tried to fix the problem
 6. Steps to reproduce the issue
 
-Open new issues at: https://github.com/yourusername/live2oder/issues
+Open new issues at: https://github.com/yourusername/live2d-agent/issues

@@ -32,7 +32,7 @@ We take security vulnerabilities seriously. If you discover a security issue, pl
 
 **Please do NOT report security vulnerabilities through public GitHub issues.**
 
-Instead, report them via email to: [security@live2oder.example.com](mailto:security@live2oder.example.com)
+Instead, report them via email to: [security@live2d-agent.example.com](mailto:security@live2d-agent.example.com)
 
 You can expect a response within 48 hours. If you do not hear back within that time, please follow up via email to ensure we received your original message.
 
@@ -45,7 +45,7 @@ Please include the following information in your report:
 
 ## Security Advisories
 
-Known security issues will be published on our [GitHub Security Advisories](https://github.com/live2oder/live2oder/security/advisories) page.
+Known security issues will be published on our [GitHub Security Advisories](https://github.com/live2d-agent/live2d-agent/security/advisories) page.
 
 ### Known Issues
 

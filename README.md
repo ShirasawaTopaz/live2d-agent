@@ -1,4 +1,4 @@
-# Live2oder
+# Live2D Agent
 
 > A Python-based desktop AI Agent application with PySide6 Qt UI that connects to Live2D models via WebSocket.
 
@@ -10,9 +10,9 @@
 
 ## English
 
-### 🤖 What is Live2oder
+### 🤖 What is Live2D Agent
 
-Live2oder is a desktop AI Agent that brings your virtual characters to life. Connect to any Live2D model via WebSocket, chat with multiple AI backends including local Ollama/Transformers and online APIs, and extend functionality through an extensible skill system.
+Live2D Agent is a desktop AI Agent that brings your virtual characters to life. Connect to any Live2D model via WebSocket, chat with multiple AI backends including local Ollama/Transformers and online APIs, and extend functionality through an extensible skill system.
 
 ### ✨ Key Features
 
@@ -28,12 +28,12 @@ Live2oder is a desktop AI Agent that brings your virtual characters to life. Con
 
 1. Clone the repository and install dependencies
 ```bash
-git clone https://github.com/yourusername/live2oder.git
-cd live2oder
+git clone https://github.com/yourusername/live2d-agent.git
+cd live2d-agent
 poetry install
 ```
 
-Live2oder currently follows the Python version declared in `pyproject.toml`: **Python >=3.14,<3.15**.
+Live2D Agent currently follows the Python version declared in `pyproject.toml`: **Python >=3.14,<3.15**.
 
 2. Copy and configure your settings
 ```bash
@@ -84,9 +84,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 中文
 
-### 🤖 Live2oder 是什么
+### 🤖 Live2D Agent 是什么
 
-Live2oder 是一个桌面 AI 智能体应用，让你的虚拟角色活起来。通过 WebSocket 连接任意 Live2D 模型，支持多种 AI 后端（本地 Ollama/Transformers 和在线 API），可通过可扩展技能系统扩展功能。
+Live2D Agent 是一个桌面 AI 智能体应用，让你的虚拟角色活起来。通过 WebSocket 连接任意 Live2D 模型，支持多种 AI 后端（本地 Ollama/Transformers 和在线 API），可通过可扩展技能系统扩展功能。
 
 ### ✨ 主要特性
 
@@ -102,8 +102,8 @@ Live2oder 是一个桌面 AI 智能体应用，让你的虚拟角色活起来。
 
 1. 克隆仓库并安装依赖
 ```bash
-git clone https://github.com/yourusername/live2oder.git
-cd live2oder
+git clone https://github.com/yourusername/live2d-agent.git
+cd live2d-agent
 poetry install
 ```
 
