@@ -23,11 +23,11 @@ from .tool_setup import register_default_tools
 from internal.config.config import AIModelConfig, AIModelType, Config, PlanningConfig
 from internal.memory import MemoryConfig, MemoryManager
 from internal.rag.rag import RAGManager
-from internal.ui.bubble_widget import BubbleWidget
 from internal.websocket.client import Client
 
 if TYPE_CHECKING:
     from internal.config.config import RAGConfig
+    from internal.ui.bubble_widget import BubbleWidget
 
 __all__ = ["Agent", "create_agent"]
 

@@ -94,7 +94,7 @@ class MCPContextChunk:
 
     chunk_id: str
     scope_id: str
-    messages: list[MCPMessage]
+    messages: list[Any]
     summary: str | None
     start_time: int
     end_time: int
@@ -126,10 +126,13 @@ class MCPContextChunk:
 
     def to_dict(self) -> dict[str, Any]:
         """转换为字典"""
+        serialized_messages = [
+            m.to_dict() if isinstance(m, MCPMessage) else m for m in self.messages
+        ]
         return {
             "chunk_id": self.chunk_id,
             "scope_id": self.scope_id,
-            "messages": [m.to_dict() for m in self.messages],
+            "messages": serialized_messages,
             "summary": self.summary,
             "start_time": self.start_time,
             "end_time": self.end_time,
@@ -141,7 +144,12 @@ class MCPContextChunk:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MCPContextChunk:
         """从字典恢复"""
-        messages = [MCPMessage.from_dict(m) for m in data["messages"]]
+        messages = [
+            MCPMessage.from_dict(m)
+            if isinstance(m, dict) and {"msg_id", "timestamp"}.issubset(m.keys())
+            else m
+            for m in data["messages"]
+        ]
         return cls(
             chunk_id=data["chunk_id"],
             scope_id=data["scope_id"],

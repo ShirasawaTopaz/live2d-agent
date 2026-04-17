@@ -33,6 +33,7 @@ class ToolCodeSandbox:
 
     def __init__(self):
         self.violations: List[SecurityViolation] = []
+        self._parents: dict[int, ast.AST] = {}
 
     def analyze(self, code: str) -> Tuple[bool, List[SecurityViolation]]:
         """分析代码安全性
@@ -44,6 +45,10 @@ class ToolCodeSandbox:
 
         try:
             tree = ast.parse(code)
+            self._parents = {}
+            for parent in ast.walk(tree):
+                for child in ast.iter_child_nodes(parent):
+                    self._parents[id(child)] = parent
         except SyntaxError as e:
             self.violations.append(
                 SecurityViolation(f"Syntax error: {e.msg}", e.lineno)
@@ -68,9 +73,14 @@ class ToolCodeSandbox:
         elif isinstance(node, ast.Name):
             if isinstance(node.ctx, ast.Load):
                 if node.id in FORBIDDEN_BUILTINS:
-                    # Special case: allow eval when it's used in the safe sandboxed template
-                    # This allows the pre-defined calc template which uses safe sandboxed eval
-                    if node.id != "eval":
+                    parent = self._parents.get(id(node))
+                    is_safe_eval = (
+                        node.id == "eval"
+                        and isinstance(parent, ast.Call)
+                        and parent.func is node
+                        and len(parent.args) == 3
+                    )
+                    if not is_safe_eval:
                         self.violations.append(
                             SecurityViolation(
                                 f"Forbidden builtin: {node.id}",
@@ -131,6 +141,13 @@ class ToolCodeSandbox:
                     f"Untrusted module: {module_name} (not in whitelist)", line
                 )
             )
+            return
+
+        self.violations.append(
+            SecurityViolation(
+                f"Untrusted module: {module_name} (not in whitelist)", line
+            )
+        )
 
     def _check_call(self, node: ast.Call):
         """检查函数调用是否安全"""

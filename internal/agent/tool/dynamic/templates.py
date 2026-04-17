@@ -37,7 +37,7 @@ TOOL_CLASS_TEMPLATE = Template('''
 # Generated at: $timestamp
 # This file is auto-generated. Do not edit manually.
 
-from internal.agent.tool.base import Tool, ToolResult
+from internal.agent.tool.base import Tool
 from typing import Any$imports
 
 
@@ -56,79 +56,61 @@ class $class_name(Tool):
     def parameters(self) -> dict:
         return $parameters_schema
     
-    async def execute(self, **kwargs) -> ToolResult:
-        try:
-            # Unpack parameters into local scope for easy access by name
+    async def execute(self, **kwargs) -> Any:
 $unpacking_code
 $implementation
-            result = result
-            
-            return ToolResult(
-                name=self.name,
-                success=True,
-                result=result,
-                error=None
-            )
-        except Exception as e:
-            return ToolResult(
-                name=self.name,
-                success=False,
-                result=None,
-                error=str(e)
-            )
 ''')
 
 
 # 简单实现模板
 SIMPLE_IMPLEMENTATION_TEMPLATE = """
-            # 实现逻辑
-            result = f"Processed: {kwargs}"
+return f"Processed: {kwargs}"
 """
 
 # HTTP请求实现模板
 HTTP_IMPLEMENTATION_TEMPLATE = """
-            import urllib.request
-            import json
-            
-            url = kwargs.get("url")
-            method = kwargs.get("method", "GET")
-            headers = kwargs.get("headers", {})
-            data = kwargs.get("data")
-            
-            req = urllib.request.Request(url, method=method)
-            
-            for key, value in headers.items():
-                req.add_header(key, value)
-            
-            if data and isinstance(data, dict):
-                req.data = json.dumps(data).encode('utf-8')
-                req.add_header('Content-Type', 'application/json')
-            
-            with urllib.request.urlopen(req, timeout=30) as response:
-                result = {
-                    "status": response.status,
-                    "body": response.read().decode('utf-8')
-                }
+import urllib.request
+import json
+
+url = kwargs.get("url")
+method = kwargs.get("method", "GET")
+headers = kwargs.get("headers", {})
+data = kwargs.get("data")
+
+req = urllib.request.Request(url, method=method)
+
+for key, value in headers.items():
+    req.add_header(key, value)
+
+if data and isinstance(data, dict):
+    req.data = json.dumps(data).encode('utf-8')
+    req.add_header('Content-Type', 'application/json')
+
+with urllib.request.urlopen(req, timeout=30) as response:
+    return {
+        "status": response.status,
+        "body": response.read().decode('utf-8')
+    }
 """
 
 # 计算实现模板
 CALC_IMPLEMENTATION_TEMPLATE = """
-            expression = kwargs.get("expression", "")
-            
-            # 安全的数学运算环境
-            safe_dict = {
-                "abs": abs,
-                "max": max,
-                "min": min,
-                "sum": sum,
-                "pow": pow,
-                "round": round,
-                "int": int,
-                "float": float,
-                "len": len,
-            }
-            
-            result = eval(expression, {"__builtins__": {}}, safe_dict)
+expression = kwargs.get("expression", "")
+
+# 安全的数学运算环境
+safe_dict = {
+    "abs": abs,
+    "max": max,
+    "min": min,
+    "sum": sum,
+    "pow": pow,
+    "round": round,
+    "int": int,
+    "float": float,
+    "len": len,
+}
+
+return eval(expression, {"__builtins__": {}}, safe_dict)
 """
 
 
@@ -137,6 +119,7 @@ def render_tool_class(
     class_name: str,
     description: str,
     parameters_schema: str,
+    unpacking_code: str,
     implementation: str,
     imports: str = "",
     timestamp: str | None = None,
@@ -161,19 +144,23 @@ def render_tool_class(
 
         timestamp = datetime.now().isoformat()
 
-    # Dedent first to remove any leading indentation then add correct indentation
-    # 16 spaces = 4 for execute + 4 for try + 4 for def user_code + 4 for the actual content
-    dedented = textwrap.dedent(implementation)
-    lines = dedented.strip().split("\n")
-    indented_impl = "\n".join(
-        f"                {line}" if line.strip() else line for line in lines
-    )
+    def indent_block(block: str) -> str:
+        dedented = textwrap.dedent(block).strip("\n")
+        if not dedented:
+            return "        pass"
+        return "\n".join(
+            f"        {line}" if line.strip() else "" for line in dedented.split("\n")
+        )
+
+    indented_unpacking = indent_block(unpacking_code)
+    indented_impl = indent_block(implementation)
 
     return TOOL_CLASS_TEMPLATE.substitute(
         tool_name=tool_name,
         class_name=class_name,
         description=description,
         parameters_schema=parameters_schema,
+        unpacking_code=indented_unpacking,
         implementation=indented_impl,
         imports=imports,
         timestamp=timestamp,

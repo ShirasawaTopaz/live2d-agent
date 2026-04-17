@@ -107,7 +107,7 @@ class DocumentChunker:
         content = document.content
         words = content.split()
         
-        if len(words) <= self.chunk_size:
+        if len(words) < self.chunk_size:
             return [document]
             
         chunks = []

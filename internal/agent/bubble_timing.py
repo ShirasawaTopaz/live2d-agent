@@ -3,14 +3,17 @@ import json
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING
 
-from internal.ui.bubble_widget import BubbleWidget
 from internal.websocket.client import (
     Client,
     DisplayBubbleText,
     Live2dDisplayBubbleText,
     send_message,
 )
+
+if TYPE_CHECKING:
+    from internal.ui.bubble_widget import BubbleWidget
 
 
 def calculate_bubble_duration(text: str) -> int:

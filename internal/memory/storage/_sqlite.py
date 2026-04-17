@@ -56,7 +56,8 @@ class SQLiteStorage(BaseStorage):
     async def init(self) -> None:
         """初始化数据库，创建表结构"""
         self._db = await aiosqlite.connect(self.db_path)
-        await self._db.execute(self.CREATE_TABLES_SQL)
+        assert self._db is not None
+        await self._db.executescript(self.CREATE_TABLES_SQL)
         await self._db.commit()
         logger.info(f"SQLiteStorage initialized at {self.db_path}")
 

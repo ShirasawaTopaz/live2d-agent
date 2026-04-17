@@ -166,7 +166,11 @@ class MCPContextManager:
             recent_messages: list[MCPMessage] = []
             recent_tokens = 0
             for chunk in recent_chunks:
-                recent_messages.extend(chunk.messages)
+                for message in chunk.messages:
+                    if isinstance(message, MCPMessage):
+                        recent_messages.append(message)
+                    elif isinstance(message, dict) and {"msg_id", "role", "content", "timestamp"}.issubset(message.keys()):
+                        recent_messages.append(MCPMessage.from_dict(message))
                 recent_tokens += chunk.total_tokens
 
             # 3. 如果需要，检索长期记忆

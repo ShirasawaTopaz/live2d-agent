@@ -14,6 +14,14 @@ from internal.mcp.protocol import MCPContextChunk
 logger = logging.getLogger(__name__)
 
 
+def _message_content(message: object) -> str:
+    if isinstance(message, dict):
+        content = message.get("content")
+        return content if isinstance(content, str) else ""
+    content = getattr(message, "content", "")
+    return content if isinstance(content, str) else ""
+
+
 class MCPStorageBackend(ABC):
     """MCP存储后端抽象基类"""
 
@@ -126,7 +134,7 @@ class JSONFileBackend(MCPStorageBackend):
                 results.append(chunk)
             else:
                 for msg in chunk.messages:
-                    if query_lower in msg.content.lower():
+                    if query_lower in _message_content(msg).lower():
                         results.append(chunk)
                         break
 
@@ -149,6 +157,7 @@ class SQLiteBackend(MCPStorageBackend):
     async def init(self) -> None:
         """Initialize database connection and create tables if needed"""
         self._db = await aiosqlite.connect(self.db_path)
+        assert self._db is not None
         await self._db.execute("""
             CREATE TABLE IF NOT EXISTS mcp_chunks (
                 chunk_id TEXT PRIMARY KEY,

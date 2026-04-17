@@ -87,21 +87,18 @@ class ToolGenerator:
         imports = self._generate_imports(extra_imports or [])
 
         try:
-            # Extract parameter names from the schema to unpack them into local variables
             param_names = list(parameters.get("properties", {}).keys())
-            unpacking_code = "\n".join([f"        {name} = kwargs.get('{name}')" for name in param_names])
-            # Add the unpacking code to the beginning of the implementation
-            if impl_code:
-                full_impl = unpacking_code + "\n" + impl_code
-            else:
-                full_impl = unpacking_code
+            unpacking_code = "\n".join(
+                [f"{name} = kwargs.get('{name}')" for name in param_names]
+            )
             # 渲染完整代码
             code = render_tool_class(
                 tool_name=name,
                 class_name=to_pascal_case(name),
                 description=description,
                 parameters_schema=json.dumps(parameters, indent=4, ensure_ascii=False),
-                implementation=full_impl,
+                unpacking_code=unpacking_code,
+                implementation=impl_code,
                 imports=imports,
                 timestamp=datetime.now().isoformat(),
             )
