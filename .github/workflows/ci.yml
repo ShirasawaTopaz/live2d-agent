@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  quality-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Set up Poetry
+        uses: abatilo/actions-poetry@v4
+        with:
+          poetry-version: '2.1.3'
+
+      - name: Install dependencies
+        run: poetry install --with dev
+
+      - name: pytest collect only
+        run: poetry run pytest --collect-only
+
+      - name: ruff scoped check
+        run: poetry run ruff check __main__.py build.py internal/config internal/prompt_manager internal/websocket tests
+
+      - name: mypy scoped check
+        run: poetry run mypy __main__.py internal/config internal/prompt_manager internal/websocket
+
+      - name: pre-commit all files
+        run: poetry run pre-commit run --all-files

@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from typing import Type, Optional
 from typing_extensions import Any
@@ -123,14 +122,6 @@ class ToolRegistry:
             }
             definitions.append(definition)
         return definitions
-
-    def execute(self, name: str, args: dict) -> Any:
-        coro = self.tools[name].execute(**args)
-        try:
-            loop = asyncio.get_running_loop()
-            return loop.run_until_complete(coro)
-        except RuntimeError:
-            return asyncio.run(coro)
 
     def unregister(self, name: str) -> bool:
         """Unregister a tool by name.

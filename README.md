@@ -33,22 +33,26 @@ cd live2oder
 poetry install
 ```
 
+Live2oder currently follows the Python version declared in `pyproject.toml`: **Python >=3.14,<3.15**.
+
 2. Copy and configure your settings
 ```bash
 cp config.example.json config.json
 # Edit config.json with your AI model settings
 ```
 
+If you want the modular prompt setup, copy `config.example-prompt-modules.json` to `config.json` instead.
+
 3. Start your Live2D WebSocket service
 
 4. Run the application
 ```bash
-python __main__.py
+poetry run python __main__.py
 ```
 
 ### 📋 Prerequisites
 
-- Python 3.11+
+- Python >=3.14,<3.15
 - A running Live2D WebSocket service (separate)
 - Optional: GPU for local Transformers inference
 
@@ -109,16 +113,18 @@ cp config.example.json config.json
 # 编辑 config.json 填入你的 AI 模型设置
 ```
 
+如果你想使用模块化提示词，也可以把 `config.example-prompt-modules.json` 复制为 `config.json`。
+
 3. 启动你的 Live2D WebSocket 服务
 
 4. 运行应用
 ```bash
-python __main__.py
+poetry run python __main__.py
 ```
 
 ### 📋 环境要求
 
-- Python 3.11+
+- Python >=3.14,<3.15
 - 运行中的 Live2D WebSocket 服务（独立部署）
 - 可选：GPU 加速本地 Transformers 推理
 
@@ -135,10 +141,6 @@ python __main__.py
 - [SECURITY.md](./SECURITY.md) - 安全政策
 - [CLAUDE.md](./CLAUDE.md) - 给 AI 编码助手的开发说明
 
-### 📄 许可证
-
-本项目基于 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解更多信息。
-
 ### 🙏 致谢
 
 - 感谢 PySide6 团队提供优秀的 Qt 绑定
@@ -148,7 +150,12 @@ python __main__.py
 
 ### ⚙️ 配置说明
 
-项目提供了配置文件模板 `config.example.json`，请按照以下步骤配置：
+项目提供了两个真实存在的配置模板：
+
+- `config.example.json`：内联 `system_prompt` 的完整示例
+- `config.example-prompt-modules.json`：引用 `prompt_modules/` 中模块化提示词的示例
+
+请任选一个复制为运行时使用的 `config.json`，并按以下步骤配置：
 
 1. 复制配置模板：
 ```bash

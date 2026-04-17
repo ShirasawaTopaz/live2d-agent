@@ -30,7 +30,7 @@ This section covers how to set up your development environment for Live2oder.
 Before you begin, ensure you have the following installed:
 
 - **Git** - For version control
-- **Python 3.11+** - The project requires Python 3.11 or newer (currently developed against 3.14)
+- **Python >=3.14,<3.15** - Match the interpreter range declared in `pyproject.toml`
 - **Poetry** - For dependency management
 - **IDE** - Visual Studio Code is recommended, but any Python IDE works
 
@@ -56,11 +56,10 @@ The project uses a custom PyPI mirror (Peking University) configured in `pyproje
 
 ### Pre-commit Hooks
 
-Pre-commit hooks are **not currently configured** for this project. This is something we plan to add in the future. When configured, you would set them up with:
+Pre-commit hooks are configured for this project. Install them locally with:
 
 ```bash
-# This is not currently active
-pre-commit install
+poetry run pre-commit install
 ```
 
 ### IDE Configuration Recommendations
@@ -88,11 +87,13 @@ Your VS Code `settings.json` should include something like this:
 
 After completing the steps above, verify your development setup by running the application in development mode:
 
-1. Copy the configuration template:
+1. Copy one of the configuration templates to the runtime filename `config.json`:
 
 ```bash
 cp config.example.json config.json
 ```
+
+   Or copy `config.example-prompt-modules.json` to `config.json` if you want prompt module references instead of an inline `system_prompt`.
 
 2. Edit `config.json` with your AI model settings and Live2D WebSocket endpoint
 
@@ -154,61 +155,45 @@ live2oder/
 
 ### Current State
 
-Live2oder does not currently have any tests implemented. According to the project roadmap in `TODO.md`, 0 out of 38 planned tasks are complete, including all testing infrastructure. This section documents the planned testing architecture and guidelines contributors should follow as we build out the test suite.
+Live2oder already has a growing pytest-based test suite plus scoped local quality gates. This section documents the current commands contributors should run and the conventions to follow when adding coverage.
 
-All testing infrastructure tasks are tracked in the project roadmap. See `TODO.md` for the full list of planned work.
+### Current Testing and Quality Commands
 
-### Planned Testing Infrastructure
+The main local commands are:
 
-We plan to use `pytest` as the primary testing framework. The planned infrastructure includes:
-
-- **pytest configuration** with `pytest.ini` and `conftest.py`
-- **Coverage reporting** to track test coverage progress
-- **Unit tests** for core modules including:
-  - Configuration validation
-  - WebSocket reconnection logic
-  - Bubble widget duration calculation
-  - Memory management and compression
-  - Tool execution and skill loading
-- **Integration tests** for key workflows like:
-  - Full conversation flow with different AI backends
-  - WebSocket connection handling
-  - Configuration loading and validation
+ - `poetry run pytest --collect-only`
+ - `poetry run pytest tests -q`
+ - `poetry run ruff check __main__.py build.py internal/ internal/agent internal/config internal/memory internal/mcp internal/prompt_manager internal/skill internal/ui internal/websocket tests`
+ - `poetry run mypy __main__.py build.py internal/agent internal/config internal/memory internal/mcp internal/prompt_manager internal/websocket`
+ - `poetry run pre-commit run --all-files`
 
 ### How to Run Tests
 
-Once the testing infrastructure is in place, you can run tests using these commands:
+Run tests with commands like:
 
 ```bash
 # Run all tests with verbose output
 poetry run pytest -v
 
 # Run a specific test file
-poetry run pytest tests/test_config_validation.py -v
+poetry run pytest tests/test_config.py -v
 
-# Generate a coverage report
-poetry run pytest --cov=internal --cov-report=term-missing
-
-# Run tests and fail if coverage is below 50%
-poetry run pytest --cov=internal --cov-fail-under=50
 ```
-
-These commands are also documented in `TODO.md` as part of the project verification process.
 
 ### Code Quality Checks
 
-While the full test suite is still being built, we already plan to use these tools for code quality. Once configured, you can run them locally:
+Use these tools locally as part of the current contributor workflow:
 
 #### Ruff Linting
 
 Ruff is a fast Python linter that enforces code style and catches common errors.
 
 ```bash
-# Run lint check on all files
-poetry run ruff check .
+# Run the scoped lint check used by the repository quality gates
+poetry run ruff check __main__.py build.py internal/ internal/agent internal/config internal/memory internal/mcp internal/prompt_manager internal/skill internal/ui internal/websocket tests
 
-# Fix fixable issues automatically
-poetry run ruff check --fix .
+# Fix fixable issues automatically in the same scoped paths
+poetry run ruff check --fix __main__.py build.py internal/ internal/agent internal/config internal/memory internal/mcp internal/prompt_manager internal/skill internal/ui internal/websocket tests
 ```
 
 #### mypy Type Checking
@@ -216,11 +201,9 @@ poetry run ruff check --fix .
 mypy provides static type checking to catch type-related errors before runtime.
 
 ```bash
-# Run type check on all internal modules
-poetry run mypy internal/
+# Run the scoped type check used by the repository quality gates
+poetry run mypy __main__.py build.py internal/agent internal/config internal/memory internal/mcp internal/prompt_manager internal/websocket
 ```
-
-See the `TODO.md` for progress on configuring these tools.
 
 ### Writing Tests
 
@@ -237,30 +220,27 @@ Test files should be placed in the `tests/` directory with the naming pattern `t
 
 ### CI/CD with GitHub Actions
 
-We plan to add a GitHub Actions CI workflow that automatically runs on every pull request and push to main. The CI will check:
+The repository includes a GitHub Actions workflow that mirrors the scoped local gates. The CI checks:
 
 - All tests pass with pytest
 - Ruff linting passes with no errors
 - mypy type checking passes with no errors
-- Code coverage meets the minimum threshold (>50%)
-- Dependency vulnerability scanning with pip-audit
-- Secrets detection with trufflehog
 
-The CI configuration will live at `.github/workflows/ci.yml`. See `TODO.md` for implementation progress.
+The CI configuration lives at `.github/workflows/ci.yml`.
 
 ### Pre-commit Hooks
 
-Pre-commit hooks are planned but not yet configured. Once the infrastructure is in place, you can set them up with:
+Pre-commit hooks are configured for the repository. Set them up locally with:
 
 ```bash
-# Install pre-commit hooks (after configuration is added)
+# Install pre-commit hooks
 poetry run pre-commit install
 
 # Run pre-commit hooks manually on all files
 poetry run pre-commit run --all-files
 ```
 
-The pre-commit configuration will include:
+The pre-commit configuration includes:
 
 - Ruff linting
 - Trailing whitespace removal

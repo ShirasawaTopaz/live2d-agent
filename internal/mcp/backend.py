@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import aiofiles
+import aiofiles.os
+import aiosqlite
 import json
 import logging
 import os
@@ -64,8 +67,9 @@ class JSONFileBackend(MCPStorageBackend):
             return None
 
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
+            async with aiofiles.open(path, "r", encoding="utf-8") as f:
+                content = await f.read()
+            data = json.loads(content)
             return MCPContextChunk.from_dict(data)
         except Exception as e:
             logger.error(f"Failed to load chunk {chunk_id}: {e}")
@@ -74,8 +78,9 @@ class JSONFileBackend(MCPStorageBackend):
     async def save_chunk(self, chunk: MCPContextChunk) -> None:
         path = self._chunk_path(chunk.chunk_id)
         try:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(chunk.to_dict(), f, indent=2, ensure_ascii=False)
+            content = json.dumps(chunk.to_dict(), indent=2, ensure_ascii=False)
+            async with aiofiles.open(path, "w", encoding="utf-8") as f:
+                await f.write(content)
         except Exception as e:
             logger.error(f"Failed to save chunk {chunk.chunk_id}: {e}")
             raise
@@ -95,7 +100,7 @@ class JSONFileBackend(MCPStorageBackend):
     async def delete_chunk(self, chunk_id: str) -> None:
         path = self._chunk_path(chunk_id)
         if path.exists():
-            os.remove(path)
+            await aiofiles.os.remove(path)
 
     async def search(
         self,
@@ -139,15 +144,12 @@ class SQLiteBackend(MCPStorageBackend):
 
     def __init__(self, db_path: str) -> None:
         self.db_path = db_path
-        self._init_db()
+        self._db: aiosqlite.Connection | None = None
 
-    def _init_db(self) -> None:
-        import sqlite3
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("""
+    async def init(self) -> None:
+        """Initialize database connection and create tables if needed"""
+        self._db = await aiosqlite.connect(self.db_path)
+        await self._db.execute("""
             CREATE TABLE IF NOT EXISTS mcp_chunks (
                 chunk_id TEXT PRIMARY KEY,
                 scope_id TEXT NOT NULL,
@@ -160,24 +162,24 @@ class SQLiteBackend(MCPStorageBackend):
             )
         """)
 
-        cursor.execute("""
+        await self._db.execute("""
             CREATE INDEX IF NOT EXISTS idx_mcp_scope ON mcp_chunks(scope_id)
         """)
 
-        conn.commit()
-        conn.close()
+        await self._db.commit()
+
+    async def close(self) -> None:
+        """Close database connection"""
+        if self._db:
+            await self._db.close()
+            self._db = None
 
     async def load_chunk(self, chunk_id: str) -> MCPContextChunk | None:
-        import sqlite3
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute(
+        assert self._db is not None
+        async with self._db.execute(
             "SELECT data_json FROM mcp_chunks WHERE chunk_id = ?", (chunk_id,)
-        )
-        row = cursor.fetchone()
-        conn.close()
+        ) as cursor:
+            row = await cursor.fetchone()
 
         if row is None:
             return None
@@ -190,13 +192,9 @@ class SQLiteBackend(MCPStorageBackend):
             return None
 
     async def save_chunk(self, chunk: MCPContextChunk) -> None:
-        import sqlite3
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
+        assert self._db is not None
         data_json = json.dumps(chunk.to_dict(), ensure_ascii=False)
-        cursor.execute(
+        await self._db.execute(
             """
             REPLACE INTO mcp_chunks
             (chunk_id, scope_id, summary, total_tokens, compressed,
@@ -215,32 +213,22 @@ class SQLiteBackend(MCPStorageBackend):
             ),
         )
 
-        conn.commit()
-        conn.close()
+        await self._db.commit()
 
     async def list_chunks(self, scope_id: str) -> list[str]:
-        import sqlite3
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute(
+        assert self._db is not None
+        async with self._db.execute(
             "SELECT chunk_id FROM mcp_chunks WHERE scope_id = ? ORDER BY start_time",
             (scope_id,),
-        )
-        rows = cursor.fetchall()
-        conn.close()
+        ) as cursor:
+            rows = await cursor.fetchall()
 
         return [row[0] for row in rows]
 
     async def delete_chunk(self, chunk_id: str) -> None:
-        import sqlite3
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM mcp_chunks WHERE chunk_id = ?", (chunk_id,))
-        conn.commit()
-        conn.close()
+        assert self._db is not None
+        await self._db.execute("DELETE FROM mcp_chunks WHERE chunk_id = ?", (chunk_id,))
+        await self._db.commit()
 
     async def search(
         self,
@@ -249,10 +237,7 @@ class SQLiteBackend(MCPStorageBackend):
         limit: int = 10,
     ) -> list[MCPContextChunk]:
         """SQLite全文搜索"""
-        import sqlite3
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        assert self._db is not None
 
         # 简单LIKE搜索在summary和data_json
         where = "WHERE (summary LIKE ? OR data_json LIKE ?)"
@@ -263,9 +248,8 @@ class SQLiteBackend(MCPStorageBackend):
             params.append(scope_id)
 
         sql = f"SELECT chunk_id FROM mcp_chunks {where} LIMIT {limit}"
-        cursor.execute(sql, params)
-        rows = cursor.fetchall()
-        conn.close()
+        async with self._db.execute(sql, params) as cursor:
+            rows = await cursor.fetchall()
 
         results: list[MCPContextChunk] = []
         for row in rows:

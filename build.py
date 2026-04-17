@@ -1,218 +1,258 @@
 #!/usr/bin/env python3
-"""
-Live2Oder 打包脚本 - PyInstaller 版本
-"""
+"""Live2oder packaging orchestrator for the PyInstaller spec build."""
 
-import os
-import sys
-import shutil
+from __future__ import annotations
+
+import argparse
+import ast
 import platform
-from pathlib import Path
+import shutil
 import subprocess
+import sys
+from dataclasses import dataclass
+from importlib.util import find_spec
+from pathlib import Path
 
 PROJECT_NAME = "live2oder"
 VERSION = "0.1.0"
-ENTRY_POINT = "__main__.py"
-OUTPUT_DIR = Path("dist") / f"{PROJECT_NAME}-{VERSION}"
+SPEC_FILE = Path("live2oder.spec")
+DIST_ROOT = Path("dist")
+BUILD_ROOT = Path("build")
+OUTPUT_DIR = DIST_ROOT / f"{PROJECT_NAME}-{VERSION}"
+PYINSTALLER_DIST_DIR = DIST_ROOT
 
 
-def clean_build():
-    """清理旧的构建产物"""
-    print("=== 清理旧构建 ===")
-    dirs_to_clean = [
-        OUTPUT_DIR,
-        Path("build"),
-        Path("dist"),
-        Path("__pycache__"),
-    ]
-    spec_file = Path(f"{PROJECT_NAME}.spec")
-    if spec_file.exists():
-        os.remove(spec_file)
-        print(f"已删除: {spec_file}")
+@dataclass(frozen=True)
+class InventoryItem:
+    label: str
+    source: Path | None
+    destination: Path
+    required: bool = True
 
-    for d in dirs_to_clean:
-        if d.exists():
-            shutil.rmtree(d)
-            print(f"已删除: {d}")
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Build or verify the Live2oder packaging output."
+    )
+    parser.add_argument(
+        "command",
+        nargs="?",
+        choices=("build", "verify-inventory"),
+        default="build",
+        help="build the distributable output or verify an existing inventory",
+    )
+    return parser.parse_args()
+
+
+def executable_name() -> str:
+    suffix = ".exe" if platform.system() == "Windows" else ""
+    return f"{PROJECT_NAME}{suffix}"
+
+
+def parse_spec_datas() -> list[tuple[str, str]]:
+    spec_source = SPEC_FILE.read_text(encoding="utf-8")
+    module = ast.parse(spec_source, filename=str(SPEC_FILE))
+
+    for node in module.body:
+        if not isinstance(node, ast.Assign):
+            continue
+
+        if not any(
+            isinstance(target, ast.Name) and target.id == "a" for target in node.targets
+        ):
+            continue
+
+        if not (
+            isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Name)
+            and node.value.func.id == "Analysis"
+        ):
+            continue
+
+        datas: list[tuple[str, str]] = []
+
+        for keyword in node.value.keywords:
+            if keyword.arg == "datas":
+                datas = ast.literal_eval(keyword.value)
+
+        return datas
+
+    raise ValueError(f"Could not find Analysis(...) assignment in {SPEC_FILE}")
+
+
+def spec_inventory_items() -> list[InventoryItem]:
+    datas = parse_spec_datas()
+    items: list[InventoryItem] = []
+
+    for source_text, destination_text in datas:
+        source = Path(source_text)
+        destination = Path(destination_text)
+        if source.name != destination.name:
+            destination = destination / source.name
+        items.append(InventoryItem(source.name, source, destination))
+
+    return items
+
+
+def distribution_inventory() -> list[InventoryItem]:
+    executable = InventoryItem("executable", None, Path(executable_name()))
+    return [executable, *spec_inventory_items()]
+
+
+def ensure_pyinstaller_installed() -> None:
+    if find_spec("PyInstaller") is not None:
+        return
+
+    raise RuntimeError(
+        "PyInstaller is not installed in the active environment. "
+        "Install it first (for example: `poetry add --group dev pyinstaller`) "
+        "and rerun `poetry run python build.py`."
+    )
+
+
+def clean_build() -> None:
+    print("=== Cleaning previous build outputs ===")
+    for path in (OUTPUT_DIR, BUILD_ROOT, DIST_ROOT, Path("__pycache__")):
+        if path.exists():
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+            print(f"Removed: {path}")
     print()
 
 
-def install_pyinstaller():
-    """检查并安装 PyInstaller"""
-    print("=== 检查 PyInstaller ===")
-    try:
-        import PyInstaller as _  # noqa: F401
-        from importlib.metadata import version
+def run_pyinstaller() -> None:
+    ensure_pyinstaller_installed()
 
-        pyinstaller_version = version("pyinstaller")
-        print(f"✓ PyInstaller 已安装，版本: {pyinstaller_version}")
-    except ImportError:
-        print("× PyInstaller 未安装，正在安装...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "pyinstaller"])
-        print("✓ PyInstaller 安装完成")
-    print()
-
-
-def run_pyinstaller():
-    """运行 PyInstaller 编译"""
-    print("=== 开始 PyInstaller 编译 ===")
-
-    # 基础 PyInstaller 命令
-    cmd = [
+    print("=== Running PyInstaller from spec ===")
+    command = [
         sys.executable,
         "-m",
         "PyInstaller",
-        "--name",
-        PROJECT_NAME,
-        "--onefile",
+        "--noconfirm",
+        "--clean",
         "--distpath",
-        "dist",
+        str(PYINSTALLER_DIST_DIR),
         "--workpath",
-        "build",
-        # "--clean",
+        str(BUILD_ROOT),
+        str(SPEC_FILE),
     ]
-
-    # 添加内嵌SKill目录
-    skill_dir = Path("skills")
-    if skill_dir.exists():
-        # 将SKill目录打包到_internal/skills
-        cmd.extend(["--add-data", f"{skill_dir}{os.pathsep}skills"])
-        print(f"✓ 将打包内嵌SKill目录: {skill_dir}")
-
-    # 平台特定选项
-    system = platform.system()
-    if system == "Windows":
-        # Windows 平台，如果不需要控制台窗口，可以添加 --windowed
-        # cmd.append("--windowed")
-        if Path("assets/icon.ico").exists():
-            cmd.extend(["--icon", "assets/icon.ico"])
-
-    # 显式包含需要的模块（PyInstaller 可能漏掉一些动态导入）
-    included_modules = [
-        "internal.agent.agent",
-        "internal.agent.register",
-        "internal.agent.agent_support.ollama",
-        "internal.agent.agent_support.online",
-        "internal.agent.agent_support.transformers",
-        "internal.agent.tool.base",
-        "internal.agent.tool.live2d.clear_expression",
-        "internal.agent.tool.live2d.display_bubble_text",
-        "internal.agent.tool.live2d.next_expression",
-        "internal.agent.tool.live2d.play_sound",
-        "internal.agent.tool.live2d.set_background",
-        "internal.agent.tool.live2d.set_expression",
-        "internal.agent.tool.live2d.set_model",
-        "internal.agent.tool.live2d.trigger_motion",
-        "internal.config.config",
-        "internal.memory",
-        "internal.memory.storage",
-        "internal.ui",
-        "internal.websocket.client",
-    ]
-    for module in included_modules:
-        cmd.extend(["--hidden-import", module])
-
-    # 排除不需要的包
-    excluded_modules = [
-        "numpy.distutils.tests",
-        "pytest",
-        "tests",
-        "test",
-        "ruff",
-        "poetry",
-    ]
-    for module in excluded_modules:
-        cmd.extend(["--exclude-module", module])
-
-    # 添加入口点
-    cmd.append(ENTRY_POINT)
-
-    print(f"运行命令: {' '.join(cmd)}")
+    print("Command:", " ".join(command))
     print()
-    subprocess.check_call(cmd)
+    subprocess.check_call(command)
     print()
 
 
-def copy_extra_files():
-    """复制额外文件到输出目录"""
-    print("=== 复制额外文件 ==")
+def copy_directory(source: Path, destination: Path) -> None:
+    if destination.exists():
+        shutil.rmtree(destination)
+    shutil.copytree(source, destination)
 
-    # 需要复制的文件列表
-    files_to_copy = [
-        "config.example.json",
-        "README.md",
-        "USER_GUIDE.md",
-    ]
 
-    # PyInstaller 输出到 dist/
-    pyinstaller_output = Path("dist")
+def copy_file(source: Path, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
 
-    # 创建输出目录
-    if not OUTPUT_DIR.exists():
-        OUTPUT_DIR.mkdir(parents=True)
 
-    # 移动可执行文件
-    exe_suffix = ".exe" if platform.system() == "Windows" else ""
-    src_exe = pyinstaller_output / f"{PROJECT_NAME}{exe_suffix}"
-    if src_exe.exists():
-        dst_exe = OUTPUT_DIR / f"{PROJECT_NAME}{exe_suffix}"
-        shutil.move(src_exe, dst_exe)
-        print(f"✓ 已移动可执行文件: {dst_exe}")
+def materialize_distribution() -> None:
+    print("=== Materializing distribution inventory ===")
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    for f in files_to_copy:
-        src = Path(f)
-        if src.exists():
-            dst = OUTPUT_DIR / f
-            shutil.copy2(src, dst)
-            print(f"✓ 已复制: {f}")
+    pyinstaller_executable = PYINSTALLER_DIST_DIR / executable_name()
+    if not pyinstaller_executable.exists():
+        raise FileNotFoundError(
+            f"PyInstaller output not found: {pyinstaller_executable}"
+        )
+
+    final_executable = OUTPUT_DIR / executable_name()
+    shutil.move(str(pyinstaller_executable), final_executable)
+    print(f"Included executable: {final_executable}")
+
+    for item in distribution_inventory()[1:]:
+        if item.source is None:
+            continue
+
+        source = item.source
+        destination = OUTPUT_DIR / item.destination
+
+        if not source.exists():
+            if item.required:
+                raise FileNotFoundError(
+                    f"Required packaging asset is missing: {source}"
+                )
+            print(f"Skipped optional asset: {source}")
+            continue
+
+        if source.is_dir():
+            copy_directory(source, destination)
         else:
-            print(f"× 未找到，跳过: {f}")
-
-    # 创建用户配置提醒文件
-    readme_note = OUTPUT_DIR / "配置说明.txt"
-    readme_note.write_text(
-        """使用说明
-========
-
-1. 请将 config.example.json 复制一份，并重命名为 config.json
-2. 编辑 config.json，填入你的 Live2D WebSocket 地址和 AI 模型配置
-3. 运行 live2oder (Windows: live2oder.exe) 即可启动
-
-详细文档请查看 README.md
-""",
-        encoding="utf-8",
-    )
-    print("✓ 已生成: 配置说明.txt")
-
+            copy_file(source, destination)
+        print(f"Included {item.label}: {destination}")
     print()
 
 
-def show_result():
-    """显示打包结果"""
-    print("=== 打包完成 ===")
-    print(f"输出目录: {OUTPUT_DIR.resolve()}")
-    print(
-        f"可执行文件: {OUTPUT_DIR / PROJECT_NAME}{'.exe' if platform.system() == 'Windows' else ''}"
-    )
+def verify_inventory(output_dir: Path = OUTPUT_DIR) -> list[Path]:
+    missing: list[Path] = []
+
+    for item in distribution_inventory():
+        path = output_dir / item.destination
+        if not path.exists():
+            missing.append(path)
+
+    return missing
+
+
+def show_result() -> None:
+    print("=== Build complete ===")
+    print(f"Output directory: {OUTPUT_DIR.resolve()}")
+    print("Inventory:")
+    for item in distribution_inventory():
+        print(f"- {item.destination}")
     print()
-    print("下一步:")
-    print("1. 在输出目录中，config.example.json 已包含")
-    print("2. 用户需要自行复制为 config.json 并填写配置")
-    print("3. 整个目录压缩后分发即可")
 
 
-def main():
-    """主函数"""
-    print(f"Live2Oder 打包脚本 v{VERSION} (PyInstaller)")
-    print(f"系统: {platform.system()} {platform.release()}")
+def run_build() -> None:
+    print(f"Live2oder packaging build v{VERSION}")
+    print(f"System: {platform.system()} {platform.release()}")
     print(f"Python: {sys.version}")
     print()
 
-    # clean_build()
-    install_pyinstaller()
+    clean_build()
     run_pyinstaller()
-    copy_extra_files()
+    materialize_distribution()
+
+    missing = verify_inventory()
+    if missing:
+        missing_paths = ", ".join(str(path) for path in missing)
+        raise RuntimeError(
+            f"Distribution inventory verification failed: {missing_paths}"
+        )
+
     show_result()
+
+
+def run_inventory_verification() -> None:
+    missing = verify_inventory()
+    if missing:
+        print("Missing distribution artifacts:")
+        for path in missing:
+            print(f"- {path}")
+        raise SystemExit(1)
+
+    print(f"Inventory verified successfully: {OUTPUT_DIR.resolve()}")
+    for item in distribution_inventory():
+        print(f"- {item.destination}")
+
+
+def main() -> None:
+    args = parse_args()
+
+    if args.command == "verify-inventory":
+        run_inventory_verification()
+        return
+
+    run_build()
 
 
 if __name__ == "__main__":

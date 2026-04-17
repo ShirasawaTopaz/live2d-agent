@@ -1,0 +1,18 @@
+repos:
+  - repo: local
+    hooks:
+      - id: pytest-collect-only
+        name: pytest collect only
+        entry: poetry run pytest --collect-only
+        language: system
+        pass_filenames: false
+      - id: ruff-scope-check
+        name: ruff scoped check
+        entry: poetry run ruff check __main__.py build.py internal/config internal/prompt_manager internal/websocket tests
+        language: system
+        pass_filenames: false
+      - id: mypy-scope-check
+        name: mypy scoped check
+        entry: poetry run mypy __main__.py internal/config internal/prompt_manager internal/websocket
+        language: system
+        pass_filenames: false

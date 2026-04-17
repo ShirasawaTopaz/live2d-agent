@@ -18,11 +18,11 @@ class DisplayBubbleTextTool(Tool):
         """
         根据文本长度计算气泡显示时长
 
-        计算公式:
-        - 基础时间: 3000ms (3秒)
-        - 每10个字符增加1000ms
-        - 最长不超过30000ms (30秒)
-        - 最少不低于5000ms (5秒)
+         计算公式:
+         - 基础时间: 3000ms (3秒)
+         - 每10个字符增加5000ms
+         - 最长不超过30000ms (30秒)
+         - 最少不低于5000ms (5秒)
         """
         if not text:
             return 5000
@@ -35,9 +35,9 @@ class DisplayBubbleTextTool(Tool):
             else:
                 char_count += 1
 
-        # 基础3秒，每10个字符加1秒
+        # 基础3秒，每10个字符加5秒
         base_duration = 3000
-        additional_duration = (char_count // 10) * 1000
+        additional_duration = (char_count // 10) * 5000
         total_duration = base_duration + additional_duration
 
         # 限制在5秒到30秒之间

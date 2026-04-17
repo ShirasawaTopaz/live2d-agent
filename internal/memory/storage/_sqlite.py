@@ -4,6 +4,7 @@ SQLite Storage Backend - Reference Implementation
 """
 
 import aiosqlite
+import json
 import logging
 from typing import List, Optional
 from datetime import datetime
@@ -71,6 +72,7 @@ class SQLiteStorage(BaseStorage):
 
         assert self._db is not None
         is_compressed = info.get("is_compressed", 0)
+        data_json = json.dumps(data, ensure_ascii=False)
         await self._db.execute(
             """
             REPLACE INTO sessions
@@ -84,7 +86,7 @@ class SQLiteStorage(BaseStorage):
                 info.get("title"),
                 info.get("message_count", 0),
                 1 if is_compressed else 0,
-                str(data),
+                data_json,
             ),
         )
         await self._db.commit()
@@ -103,9 +105,7 @@ class SQLiteStorage(BaseStorage):
             if row is None:
                 return None
             # 这里我们实际存储完整的JSON数据，简化实现
-            import json
-
-            data = json.loads(row[0].replace("'", '"'))
+            data = json.loads(row[0])
             logger.debug(f"Loaded session {session_id} from SQLite")
             return data
 

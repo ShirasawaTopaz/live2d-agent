@@ -3,13 +3,15 @@
 import tempfile
 import pytest
 import asyncio
-from typing import Any
+from typing import Any, MutableMapping, AsyncIterator
 
 from internal.agent.agent import Agent
 from internal.agent.agent_support.trait import ModelTrait
 from internal.agent.planning.base import Task, TaskResult as PlanTaskResult
 from internal.agent.planning.plan import ConcretePlan
 from internal.agent.planning.types import PlanStatus, TaskStatus
+from internal.agent.planning.storage.base import PlanStorage
+from internal.agent.planning.storage.json import JSONPlanStorage
 from internal.config.config import AIModelConfig, AIModelType, PlanningConfig, MemoryConfig
 
 
@@ -18,7 +20,7 @@ class MockModel(ModelTrait):
     
     def __init__(self, config: AIModelConfig):
         self.config = config
-        self.history: list[dict] = []
+        self.history: list[MutableMapping[str, Any]] = []
         self._tools_supported = False
     
     async def chat(self, message: Any, tools: list[dict] | None = None) -> dict:
@@ -35,7 +37,7 @@ class MockModel(ModelTrait):
             "content": f"Mock response to: {str(message)}"
         }
     
-    def stream_chat(self, message: Any, tools: list[dict] | None = None) -> asyncio.Task:
+    def stream_chat(self, message: Any, tools: list[dict] | None = None) -> AsyncIterator[dict]:
         """Mock stream chat that just returns a single chunk."""
         async def mock_stream():
             yield {"content": "Mock streaming response", "done": True}
@@ -59,7 +61,7 @@ class SimpleTaskForTest(Task):
     """Simple concrete Task implementation that just records execution."""
     
     def __init__(self, task_id: str, name: str, description: str = "",
-                 dependencies: list[str] = None, should_fail: bool = False):
+                 dependencies: list[str] | None = None, should_fail: bool = False):
         self._task_id = task_id
         self._name = name
         self._description = description
@@ -174,6 +176,7 @@ class TestAgentIntegrationWithPlanner:
         planning_config = self.create_planning_config(enabled=True)
         agent = Agent(MockModel(self.mock_model_config), None, None, planning_config)
         
+        assert agent.planner is not None
         # Initialize planner storage
         await agent.planner.storage.init()
         
@@ -208,6 +211,7 @@ class TestAgentIntegrationWithPlanner:
         planning_config = self.create_planning_config(enabled=True)
         agent = Agent(MockModel(self.mock_model_config), None, None, planning_config)
         
+        assert agent.planner is not None
         # Initialize planner storage
         await agent.planner.storage.init()
         
@@ -268,8 +272,8 @@ class TestAgentIntegrationWithPlanner:
         
         mock_ws = MockWS()
         
-        # Execute chat
-        response = await agent.chat("Hello, how are you?", mock_ws)
+         # Execute chat - mock_ws is compatible due to duck typing
+         response = await agent.chat("Hello, how are you?", mock_ws)  # type: ignore
         
         # Verify chat completed successfully
         assert response is not None

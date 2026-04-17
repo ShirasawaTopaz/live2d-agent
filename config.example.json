@@ -6,32 +6,86 @@
             "model": "gemma3:1b",
             "type": "ollama",
             "system_prompt": "你是一个可爱的Live2D虚拟助手。\n\n## 可用工具\n\n### display_bubble_text - 显示气泡文本\n用于向用户显示消息气泡。\n- text(必需): 显示文本内容\n- choices(可选): 选项数组\n- textFrameColor(可选): 边框颜色，默认0\n- textColor(可选): 文字颜色，默认16777215\n- duration(可选): 显示时长毫秒，默认13000\n\n### file - 文件操作工具\n用于读取、写入、搜索文件和目录。\n- action(必需): 操作类型 - read/write/search_files/search_dirs\n- path(必需): 文件或目录路径\n- content(可选): 写入内容（write时需要）\n- pattern(可选): 搜索模式（search_files时使用）\n\n请用自然友好的语气回应用户。当需要读取文件时，请使用file工具的read操作。",
-            "default": false,
+            "default": true,
             "streaming": true,
+            "temperature": 0.3,
+            "top_p": 0.9,
+            "repeat_penalty": 1.1,
+            "max_new_tokens": 512,
+            "enable_cot": true,
+            "max_tool_call_retries": 2,
             "options": {
                 "temperature": 0.3,
                 "top_p": 0.9
             }
         },
         {
-            "name": "local-transformers",
-            "model": "/path/to/your/local/model",
+            "name": "local-transformers-0.8b-4bit",
+            "model": "/path/to/your/local/Qwen2-0.8B-Instruct",
             "type": "transformers",
-            "system_prompt": "你是Live2D虚拟助手。\n\n## 核心规则\n1. 当需要显示内容给用户时，必须使用工具\n2. 禁止输出任何解释、思考或无关文本\n\n## 可用工具\n\n### display_bubble_text - 显示气泡文本\n参数：\n- text(必需): 显示文本内容\n- choices(可选): 选项数组\n- textFrameColor(可选): 边框颜色，默认0\n- textColor(可选): 文字颜色，默认16777215\n- duration(可选): 显示时长毫秒，默认13000\n\n### file - 文件操作工具\n参数：\n- action(必需): 操作类型 - read/write/search_files/search_dirs\n- path(必需): 文件或目录路径\n- content(可选): 写入内容\n- pattern(可选): 搜索模式\n\n## 规则\n- 每次只能调用一个工具\n- 系统返回结果后，可继续调用其他工具\n- 最多调用5次工具",
+            "system_prompt": {
+                "core/base_rules": true,
+                "core/live2d_rules": true,
+                "core/tool_calling": true,
+                "capabilities/tool-use": true,
+                "languages/zh-CN": true,
+                "personality/friendly": true,
+                "scenarios/assistant": true
+            },
             "default": false,
             "streaming": true,
-            "options": {
-                "temperature": 0.3,
-                "top_p": 0.9
-            }
+            "load_in_4bit": true,
+            "load_in_8bit": false,
+            "kv_cache_quantization": true,
+            "temperature": 0.2,
+            "top_p": 0.9,
+            "repeat_penalty": 1.1,
+            "max_new_tokens": 512,
+            "enable_cot": true,
+            "max_tool_call_retries": 2,
+            "options": {}
+        },
+        {
+            "name": "local-transformers-7b",
+            "model": "/path/to/your/local/Qwen2.5-7B-Instruct",
+            "type": "transformers",
+            "system_prompt": {
+                "core/base_rules": true,
+                "core/live2d_rules": true,
+                "core/tool_calling": true,
+                "capabilities/tool-use": true,
+                "languages/zh-CN": true,
+                "personality/friendly": true,
+                "scenarios/assistant": true
+            },
+            "default": false,
+            "streaming": true,
+            "load_in_4bit": null,
+            "load_in_8bit": null,
+            "kv_cache_quantization": true,
+            "temperature": 0.5,
+            "top_p": 0.9,
+            "repeat_penalty": 1.05,
+            "max_new_tokens": 1024,
+            "enable_cot": true,
+            "max_tool_call_retries": 2,
+            "options": {}
         },
         {
             "name": "online-kimi",
             "model": "your-model-endpoint",
             "type": "online",
             "api_key": "your-api-key-here",
-            "system_prompt": "你是花里实乃理。\n\n## 核心规则\n1. 当需要显示内容给用户时，必须使用工具\n2. 禁止输出任何解释、思考或无关文本\n\n## 可用工具\n\n### display_bubble_text - 显示气泡文本\n参数：\n- text(必需): 显示文本内容\n- choices(可选): 选项数组\n- textFrameColor(可选): 边框颜色，默认0\n- textColor(可选): 文字颜色，默认16777215\n- duration(可选): 显示时长毫秒，默认13000\n\n### file - 文件操作工具\n参数：\n- action(必需): 操作类型 - read/write/search_files/search_dirs\n- path(必需): 文件或目录路径\n- content(可选): 写入内容\n- pattern(可选): 搜索模式\n\n## 规则\n- 每次只能调用一个工具\n- 系统返回结果后，可继续调用其他工具\n- 最多调用5次工具",
-            "default": true,
+            "system_prompt": {
+                "core/base_rules": true,
+                "core/live2d_rules": true,
+                "core/tool_calling": true,
+                "capabilities/tool-use": true,
+                "languages/zh-CN": true,
+                "personality/friendly": true,
+                "scenarios/assistant": true
+            },
+            "default": false,
             "streaming": true,
             "options": {
                 "api": "https://ark.cn-beijing.volces.com/api/v3",
@@ -41,6 +95,13 @@
             }
         }
     ],
+    "rag": {
+        "enabled": false,
+        "document_dir": "./documents",
+        "chunk_size": 512,
+        "chunk_overlap": 50,
+        "top_k": 3
+    },
     "memory": {
         "enabled": true,
         "storage_type": "json",
@@ -72,25 +133,33 @@
         }
     },
     "sandbox": {
-        "enabled": true,
-        "file": {
-            "enabled": true,
-            "default_policy": "deny",
-            "allowed_directories": ["./"],
-            "max_file_size": 10485760,
-            "allow_write": true,
-            "require_approval_for_write": true,
-            "require_approval_for_read_outside_allowed": true
-        },
-        "network": {
-            "enabled": true,
-            "block_private_ips": true,
-            "allowed_domains": ["*.baidu.com", "*.bing.com", "*.duckduckgo.com", "*.google.com"]
-        },
-        "approval": {
-            "enabled": true,
-            "timeout_seconds": 30,
-            "remember_choice": true
-        }
-    }
+         "enabled": true,
+         "file": {
+             "enabled": true,
+             "default_policy": "deny",
+             "allowed_directories": ["./"],
+             "max_file_size": 10485760,
+             "allow_write": true,
+             "require_approval_for_write": true,
+             "require_approval_for_read_outside_allowed": true
+         },
+         "network": {
+             "enabled": true,
+             "block_private_ips": true,
+             "allowed_domains": ["*.baidu.com", "*.bing.com", "*.duckduckgo.com", "*.google.com"]
+         },
+         "approval": {
+             "enabled": true,
+             "timeout_seconds": 30,
+             "remember_choice": true
+         }
+     },
+     "planning": {
+         "enabled": false,
+         "storage_type": "json",
+         "storage_path": "data/plans.json",
+         "max_concurrency": 4,
+         "max_plan_depth": 10,
+         "auto_save": true
+     }
 }

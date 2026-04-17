@@ -23,7 +23,7 @@ This guide walks you through installing and setting up Live2oder step by step.
 Before you begin, make sure you have the following software installed on your system:
 
 - **Git** - For cloning the repository. Download from [git-scm.com](https://git-scm.com/).
-- **Python 3.11+** - Live2oder requires Python 3.11 or newer. The project is currently tested with Python 3.14. Download from [python.org](https://www.python.org/).
+- **Python >=3.14,<3.15** - Live2oder follows the interpreter range declared in `pyproject.toml`. Download a compatible version from [python.org](https://www.python.org/).
 - **Poetry** - Dependency manager for Python. Install following the [official guide](https://python-poetry.org/docs/#installation).
 - **Live2D WebSocket service** - A separate running Live2D service that exposes a WebSocket endpoint. Live2oder connects to this to interact with your Live2D model.
 
@@ -71,9 +71,12 @@ Poetry will automatically create a virtual environment and install all dependenc
 
 ### Step 3: First-Time Configuration
 
-Live2oder uses a JSON configuration file to store your settings. The repository includes a template you can copy and modify:
+Live2oder uses a JSON configuration file to store your settings. The repository includes two templates you can copy to the runtime filename `config.json`:
 
-#### Copy the Configuration Template
+- `config.example.json` - standard inline `system_prompt` example
+- `config.example-prompt-modules.json` - example that references prompt modules from `prompt_modules/`
+
+#### Copy a Configuration Template
 
 ```bash
 # On macOS/Linux
@@ -83,8 +86,10 @@ cp config.example.json config.json
 copy config.example.json config.json
 
 # On Windows (PowerShell)
-copy config.example.json config.json
+Copy-Item config.example.json config.json
 ```
+
+If you want the modular prompt setup instead, replace `config.example.json` with `config.example-prompt-modules.json` in the same commands.
 
 #### What's in the Configuration?
 
@@ -126,10 +131,7 @@ If you don't see any error messages, your installation is good.
 2. Run Live2oder:
 
 ```bash
-# If you're already in the poetry shell
-python __main__.py
-
-# Or without activating the shell
+# Recommended: run through Poetry so the managed environment is used
 poetry run python __main__.py
 ```
 
@@ -1242,7 +1244,7 @@ Both JSON and SQLite storage keep all data on your local machine when using loca
 
 ### Overview
 
-Live2oder can be built into a standalone executable that can be distributed and run without requiring users to install Python or any dependencies. The project uses PyInstaller for this purpose, and includes a pre-configured build script to handle the entire process automatically.
+Live2oder can be built into a standalone executable that can be distributed and run without requiring users to install Python or any dependencies. The project uses PyInstaller for this purpose, and includes a pre-configured build script that drives the checked-in `live2oder.spec` manifest.
 
 This is ideal if you want to:
 - Distribute Live2oder to users who aren't comfortable with Python development
@@ -1254,37 +1256,34 @@ This is ideal if you want to:
 Before building, you must already have:
 1. Cloned the Live2oder repository to your build machine
 2. Installed all project dependencies (follow the Installation & Setup section earlier in this guide)
-3. Verified that the application runs correctly with `python __main__.py`
-4. Configured any custom settings or skills you want to include in the build
-
-The `build.py` script will automatically check for PyInstaller and install it if it's not already present. You don't need to install PyInstaller manually.
+3. Installed PyInstaller in the active environment (for example with `poetry add --group dev pyinstaller`)
+4. Verified that the application runs correctly with `poetry run python __main__.py`
+5. Configured any custom settings or skills you want to include in the build
 
 ### Build Process
 
 Building is as simple as running a single command:
 
 ```bash
-python build.py
+poetry run python build.py
 ```
 
 The script handles everything automatically:
-1. Checks if PyInstaller is installed and installs it if needed
-2. Runs PyInstaller with the correct configuration
-3. Automatically includes all Python modules used by the project
-4. Includes any additional files like the configuration template and documentation
-5. Organizes everything into a clean output directory
+1. Fails fast with a clear message if PyInstaller is missing from the active environment
+2. Runs PyInstaller using `live2oder.spec` as the single packaging manifest
+3. Materializes the packaged artifact inventory into a versioned output directory
+4. Verifies that the expected executable, asset directories, config templates, and docs are present
 
-If you have a `skills` directory with custom skills, the script will automatically include it in the build. If you have an `assets/icon.ico` file on Windows, it will be used as the application icon.
+If you have a `skills` directory with custom skills, or prompt modules under `prompt_modules/`, the script will include them in the packaged output.
 
 ### What the Build Script Does
 
 The build process:
 - Uses **PyInstaller** to bundle Python and all dependencies into a single executable
 - Creates a **one-file output** that includes everything needed to run the application
-- Explicitly includes all dynamically loaded modules that PyInstaller might miss
+- Reads hidden imports and packaged data from `live2oder.spec`
 - Excludes development-only packages to reduce output size
-- Copies all required extra files (configuration template, documentation, etc.) to the output directory
-- On Windows, it uses `live2oder.spec` for additional PyInstaller configuration
+- Copies the verified distribution inventory (configuration templates, skills, prompt modules, documentation, etc.) to the output directory
 
 ### Build Output
 
@@ -1296,7 +1295,10 @@ dist/live2oder-<version>/
 
 Inside this directory you'll find:
 - `live2oder.exe` (on Windows) or `live2oder` (on macOS/Linux) - the main executable
+- `skills/` - packaged skill definitions distributed alongside the executable
+- `prompt_modules/` - packaged prompt module files for modular prompt configs
 - `config.example.json` - configuration template for end users
+- `config.example-prompt-modules.json` - modular-prompt configuration template for end users
 - `README.md` - project readme
 - `USER_GUIDE.md` - user guide (if present)
 - `配置说明.txt` - quick start configuration instructions for Chinese users
@@ -1317,8 +1319,8 @@ PyInstaller can use a lot of memory when bundling large applications like Live2o
 
 Sometimes PyInstaller misses modules that are dynamically imported at runtime. If your built executable crashes with "No module named" errors:
 
-- The build script already includes most of Live2oder's modules in the `hiddenimports` list in `build.py`.
-- If you add new modules that are dynamically loaded, you need to add them to the `included_modules` list in `build.py` before building.
+- Update `live2oder.spec`, because it is the single source of truth for PyInstaller hidden imports and packaged data.
+- If you add new runtime assets such as prompt modules or config templates, add them to `live2oder.spec` so the build inventory and verification step pick them up automatically.
 - After adding missing modules, run the build again.
 
 #### Antivirus False Positives
@@ -1510,7 +1512,7 @@ This section covers common problems you might encounter when running Live2oder, 
 **Solution**:
 1. Verify PyInstaller is up to date. Update with pip install -U pyinstaller.
 2. Check that you're building from the project root directory. PyInstaller needs the correct working directory to find all files.
-3. Verify all dependencies are installed in your active environment. Run poetry install or pip install -r requirements.txt before building.
+3. Verify all dependencies are installed in your active environment. Run `poetry install` before building.
 4. On Windows, check that your antivirus isn't interfering with PyInstaller - it sometimes flags PyInstaller as malicious. Add an exception for the build directory.
 5. Check the build log for missing module errors - some PySide6 components may need to be explicitly included in the PyInstaller spec file.
  6. If you get "maximum recursion depth exceeded", increase the recursion limit at the top of `build.py`.

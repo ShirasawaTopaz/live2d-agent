@@ -339,8 +339,8 @@ class BubbleWidget(QWidget):
         """
         # 计算基于文本长度的显示时间
         text_length = len(self.displayed_text)
-        # 基础时间 15秒，每增加10个字符增加1秒，最多30秒
-        dynamic_duration = 15000 + min(text_length * 100, 15000)
+        # 基础时间 15秒，每增加10个字符增加5秒，最多60秒
+        dynamic_duration = 15000 + min(text_length * 500, 45000)
         
         # 使用传入的时长或动态计算的时长，取较大值
         final_duration = max(duration_ms, dynamic_duration)
@@ -453,8 +453,8 @@ class BubbleWidget(QWidget):
                 self._typewriter_timer.stop()
             # 打字完成后启动自动隐藏定时器，根据文本长度设置合适的显示时间
             text_length = len(self.displayed_text)
-            # 基础时间 15秒，每增加10个字符增加1秒，最多30秒
-            duration = 15000 + min(text_length * 100, 15000)
+            # 基础时间 15秒，每增加10个字符增加5秒，最多60秒
+            duration = 15000 + min(text_length * 500, 45000)
             self._hide_timer.start(duration)
             return
 

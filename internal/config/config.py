@@ -3,6 +3,7 @@ import aiofiles
 
 from dataclasses import dataclass
 from enum import Enum
+from json import JSONDecodeError
 from typing import Any, Optional
 
 from internal.memory import MemoryConfig
@@ -26,11 +27,21 @@ class AIModelConfig:
     temperature: float
     api_key: str | None = None
     streaming: bool = True  # 是否启用流式响应，默认启用
+    # New fields for quantization and inference configuration
+    load_in_4bit: bool | None = None
+    load_in_8bit: bool | None = None
+    kv_cache_quantization: bool | None = None
+    top_p: float | None = None
+    repeat_penalty: float | None = None
+    max_new_tokens: int | None = None
+    enable_cot: bool | None = None
+    max_tool_call_retries: int | None = None
 
 
 @dataclass
 class PlanningConfig:
     """Configuration for planning system."""
+
     enabled: bool = False
     storage_type: str = "json"  # "json" or "sqlite"
     storage_path: str = "data/plans.json"
@@ -50,24 +61,63 @@ class PlanningConfig:
         )
 
 
+@dataclass
+class RAGConfig:
+    """Configuration for Retrieval-Augmented Generation."""
+
+    enabled: bool = False
+    document_dir: str = ""
+    chunk_size: int = 512
+    chunk_overlap: int = 50
+    top_k: int = 3
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "RAGConfig":
+        return cls(
+            enabled=data.get("enabled", False),
+            document_dir=data.get("document_dir", ""),
+            chunk_size=data.get("chunk_size", 512),
+            chunk_overlap=data.get("chunk_overlap", 50),
+            top_k=data.get("top_k", 3),
+        )
+
+
 class Config:
-    live2dSocket: str = "ws://127.0.0.1:10086/api"
-    models: list[AIModelConfig] = []
-    memory: MemoryConfig | None = None
-    sandbox: SandboxConfig | None = None
-    planning: PlanningConfig | None = None
+    DEFAULT_CONFIG_PATH = "config.json"
+
+    def __init__(self) -> None:
+        self.live2dSocket: str = "ws://127.0.0.1:10086/api"
+        self.models: list[AIModelConfig] = []
+        self.memory: MemoryConfig = MemoryConfig()
+        self.sandbox: SandboxConfig = SandboxConfig()
+        self.planning: PlanningConfig = PlanningConfig()
+        self.rag: RAGConfig = RAGConfig()
 
     @staticmethod
-    async def load():
+    async def load(config_path: str = DEFAULT_CONFIG_PATH) -> "Config":
         config = Config()
         try:
-            async with aiofiles.open("config.json", encoding="utf-8") as file:
+            async with aiofiles.open(config_path, encoding="utf-8") as file:
                 data = await file.read()
-                if data != "":
-                    json_data = json.loads(data)
-                    config._from_dict(json_data)
         except FileNotFoundError:
-            pass
+            return config
+
+        if not data.strip():
+            return config
+
+        try:
+            json_data = json.loads(data)
+        except JSONDecodeError as exc:
+            raise ValueError(
+                f"Invalid JSON in config file '{config_path}': {exc.msg}"
+            ) from exc
+
+        if not isinstance(json_data, dict):
+            raise ValueError(
+                f"Config file '{config_path}' must contain a JSON object at the top level."
+            )
+
+        config._from_dict(json_data)
         return config
 
     def _from_dict(self, data: dict):
@@ -92,20 +142,14 @@ class Config:
             # Use default planning configuration with sensible defaults
             self.planning = PlanningConfig()
 
-        if "models" in data and isinstance(data["models"], list):
-            for model_data in data["models"]:
-                model_config = AIModelConfig(
-                    name=model_data.get("name", ""),
-                    model=model_data.get("model", ""),
-                    system_prompt=model_data.get("system_prompt", ""),
-                    type=AIModelType(model_data.get("type", "ollama")),
-                    default=model_data.get("default", False),
-                    config=model_data.get("options", {}),
-                    temperature=model_data.get("temperature", 0.7),
-                    api_key=model_data.get("api_key", None),
-                    streaming=model_data.get("streaming", True),  # 默认启用流式响应
-                )
-                self.models.append(model_config)
+        self.models = self._load_models(data.get("models"))
+
+        # Load RAG configuration
+        if "rag" in data and isinstance(data["rag"], dict):
+            self.rag = RAGConfig.from_dict(data["rag"])
+        else:
+            # Use default RAG configuration (disabled by default)
+            self.rag = RAGConfig()
 
     # 调用最上面设置为default的模型配置，如果都没设置default=true，则默认调用第一个
     def get_default_model_config(self) -> AIModelConfig:
@@ -123,3 +167,50 @@ class Config:
             if i.name == name:
                 return i
         return None
+
+    def _load_models(self, raw_models: Any) -> list[AIModelConfig]:
+        if raw_models is None:
+            return []
+
+        if not isinstance(raw_models, list):
+            raise ValueError("The 'models' field must be a list when provided.")
+
+        models: list[AIModelConfig] = []
+        for index, model_data in enumerate(raw_models):
+            if not isinstance(model_data, dict):
+                raise ValueError(f"Model entry at index {index} must be a JSON object.")
+
+            model_name = model_data.get("name", f"models[{index}]")
+            model_type_value = model_data.get("type", AIModelType.OllamaModel.value)
+            try:
+                model_type = AIModelType(model_type_value)
+            except ValueError as exc:
+                valid_types = ", ".join(model_type.value for model_type in AIModelType)
+                raise ValueError(
+                    f"Invalid model type '{model_type_value}' for '{model_name}'. "
+                    f"Expected one of: {valid_types}."
+                ) from exc
+
+            models.append(
+                AIModelConfig(
+                    name=model_data.get("name", ""),
+                    model=model_data.get("model", ""),
+                    system_prompt=model_data.get("system_prompt", ""),
+                    type=model_type,
+                    default=model_data.get("default", False),
+                    config=model_data.get("options", {}),
+                    temperature=model_data.get("temperature", 0.7),
+                    api_key=model_data.get("api_key", None),
+                    streaming=model_data.get("streaming", True),
+                    load_in_4bit=model_data.get("load_in_4bit", None),
+                    load_in_8bit=model_data.get("load_in_8bit", None),
+                    kv_cache_quantization=model_data.get("kv_cache_quantization", None),
+                    top_p=model_data.get("top_p", None),
+                    repeat_penalty=model_data.get("repeat_penalty", None),
+                    max_new_tokens=model_data.get("max_new_tokens", None),
+                    enable_cot=model_data.get("enable_cot", None),
+                    max_tool_call_retries=model_data.get("max_tool_call_retries", None),
+                )
+            )
+
+        return models

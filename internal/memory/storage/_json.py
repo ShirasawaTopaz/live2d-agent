@@ -3,6 +3,7 @@ JSON Storage Backend - Reference Implementation
 ⚠️  This is reference design code, not yet production-ready
 """
 
+import aiofiles
 import json
 import logging
 from pathlib import Path
@@ -42,8 +43,9 @@ class JSONStorage(BaseStorage):
     async def save_session(self, session_id: str, data: dict) -> None:
         """保存会话数据到JSON文件"""
         path = self._get_session_path(session_id)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        content = json.dumps(data, ensure_ascii=False, indent=2)
+        async with aiofiles.open(path, "w", encoding="utf-8") as f:
+            await f.write(content)
         logger.debug(f"Saved session {session_id} to {path}")
 
     async def load_session(self, session_id: str) -> dict | None:
@@ -51,8 +53,9 @@ class JSONStorage(BaseStorage):
         path = self._get_session_path(session_id)
         if not path.exists():
             return None
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        async with aiofiles.open(path, "r", encoding="utf-8") as f:
+            content = await f.read()
+        data = json.loads(content)
         logger.debug(f"Loaded session {session_id} from {path}")
         return data
 
@@ -70,8 +73,9 @@ class JSONStorage(BaseStorage):
         sessions: List[SessionInfo] = []
         for json_file in self.sessions_dir.glob("*.json"):
             try:
-                with open(json_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
+                async with aiofiles.open(json_file, "r", encoding="utf-8") as f:
+                    content = await f.read()
+                data = json.loads(content)
                 info = SessionInfo.from_dict(data.get("info", {}))
                 sessions.append(info)
             except Exception as e:
@@ -84,8 +88,9 @@ class JSONStorage(BaseStorage):
     async def save_long_term(self, entry: LongTermEntry) -> None:
         """保存长期记忆到JSON文件"""
         path = self._get_long_term_path(entry.id)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(entry.to_dict(), f, ensure_ascii=False, indent=2)
+        content = json.dumps(entry.to_dict(), ensure_ascii=False, indent=2)
+        async with aiofiles.open(path, "w", encoding="utf-8") as f:
+            await f.write(content)
         logger.debug(f"Saved long term entry {entry.id}")
 
     async def query_long_term(self, query: str, limit: int = 10) -> List[LongTermEntry]:
@@ -95,8 +100,9 @@ class JSONStorage(BaseStorage):
 
         for json_file in self.long_term_dir.glob("*.json"):
             try:
-                with open(json_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
+                async with aiofiles.open(json_file, "r", encoding="utf-8") as f:
+                    content = await f.read()
+                data = json.loads(content)
                 entry = LongTermEntry.from_dict(data)
                 # 简单关键词匹配：检查查询词是否出现在内容或关键词中
                 if query_lower in entry.content.lower():

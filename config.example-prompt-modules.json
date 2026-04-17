@@ -19,7 +19,7 @@
                     "languages/chinese"
                 ]
             },
-            "default": false,
+            "default": true,
             "options": {
                 "temperature": 0.3,
                 "top_p": 0.9
@@ -77,5 +77,42 @@
         "long_term_storage": "sqlite",
         "auto_cleanup": true,
         "max_sessions": 10
+    },
+    "rag": {
+        "enabled": false,
+        "document_dir": "./documents",
+        "chunk_size": 512,
+        "chunk_overlap": 50,
+        "top_k": 3
+    },
+    "sandbox": {
+        "enabled": true,
+        "file": {
+            "enabled": true,
+            "default_policy": "deny",
+            "allowed_directories": ["./"],
+            "max_file_size": 10485760,
+            "allow_write": true,
+            "require_approval_for_write": true,
+            "require_approval_for_read_outside_allowed": true
+        },
+        "network": {
+            "enabled": true,
+            "block_private_ips": true,
+            "allowed_domains": ["*.baidu.com", "*.bing.com", "*.duckduckgo.com", "*.google.com"]
+        },
+        "approval": {
+            "enabled": true,
+            "timeout_seconds": 30,
+            "remember_choice": true
+        }
+    },
+    "planning": {
+        "enabled": false,
+        "storage_type": "json",
+        "storage_path": "data/plans.json",
+        "max_concurrency": 4,
+        "max_plan_depth": 10,
+        "auto_save": true
     }
 }

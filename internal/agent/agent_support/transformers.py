@@ -1,7 +1,7 @@
 import json
 import logging
 import asyncio
-from typing import Any, AsyncIterator, List, MutableMapping
+from typing import Any, AsyncIterator, List, MutableMapping, Optional
 from internal.agent.agent_support.trait import ModelTrait
 from internal.agent.response import ToolCallParser
 from internal.config.config import AIModelConfig
@@ -32,6 +32,71 @@ class Transformers(ModelTrait):
         self._model: Any | None = None
         self._device: str | None = None
         self._system_prompt_resolved: bool = False
+        # Cache estimated parameter count
+        self._param_count_b: float | None = None
+        
+    def _estimate_param_count(self) -> float:
+        """Estimate parameter count in billions from model path/name."""
+        if self._param_count_b is not None:
+            return self._param_count_b
+            
+        model_path_lower = self.config.model.lower()
+        param_count_b = 0.0
+        if any(s in model_path_lower for s in ["0.8b", "0.8b", "1b"]):
+            param_count_b = 0.8
+        elif any(s in model_path_lower for s in ["1.8b", "2b"]):
+            param_count_b = 1.8
+        elif any(s in model_path_lower for s in ["4b", "7b"]):
+            if "4b" in model_path_lower:
+                param_count_b = 4.0
+            else:
+                param_count_b = 7.0
+        elif any(s in model_path_lower for s in ["13b", "14b"]):
+            param_count_b = 13.0
+        elif "32b" in model_path_lower:
+            param_count_b = 32.0
+            
+        self._param_count_b = param_count_b
+        return param_count_b
+        
+    def _get_inference_param(self, param_name: str, default: Any) -> Any:
+        """Get parameter from config if available, else return default."""
+        return getattr(self.config, param_name, None) or default
+        
+    def get_inference_params(self) -> dict:
+        """Get all inference parameters with auto defaults based on model size."""
+        param_count_b = self._estimate_param_count()
+        
+        # Defaults based on model size:
+        # <= 4B: lower temp, higher repeat penalty for better format stability
+        # > 4B: more relaxed defaults
+        if param_count_b <= 4.0:
+            default_temp = 0.3
+            default_repeat_penalty = 1.1
+        else:
+            default_temp = 0.7
+            default_repeat_penalty = 1.05
+         
+        params = {
+            "max_new_tokens": self._get_inference_param("max_new_tokens", 512),
+            "temperature": self._get_inference_param("temperature", default_temp),
+            "top_p": self._get_inference_param("top_p", 0.9),
+            "repetition_penalty": self._get_inference_param("repeat_penalty", default_repeat_penalty),
+            "do_sample": True,
+        }
+        
+        # Log auto-selected defaults
+        if param_count_b > 0:
+            logging.debug(
+                f"Inference params for {param_count_b:.1f}B model: "
+                f"temp={params['temperature']}, repetition_penalty={params['repetition_penalty']}"
+            )
+            
+        return params
+        
+    def get_max_tool_call_retries(self) -> int:
+        """Get maximum tool call retries from config, default 2."""
+        return getattr(self.config, "max_tool_call_retries", None) or 2
 
     async def _ensure_system_prompt(self):
         """确保系统提示词已解析"""
@@ -73,29 +138,132 @@ class Transformers(ModelTrait):
                     f"无法加载 tokenizer，请检查模型路径是否正确: {model_path}"
                 )
 
-            if device == "cuda":
-                model = Qwen3_5ForConditionalGeneration.from_pretrained(
-                    model_path,
-                    trust_remote_code=True,
-                    torch_dtype=dtype,
-                    device_map="cuda",
+            # Handle quantization
+            quantization_config = None
+            bnb_available = False
+            try:
+                from transformers import BitsAndBytesConfig
+                bnb_available = True
+            except ImportError:
+                if self.config.load_in_4bit or self.config.load_in_8bit:
+                    logging.warning(
+                        "bitsandbytes not installed, quantization disabled, will load full precision. "
+                        "Install bitsandbytes to enable 4-bit/8-bit quantization."
+                    )
+
+            if bnb_available:
+                # Check if user explicitly configured quantization
+                load_in_4bit = self.config.load_in_4bit
+                load_in_8bit = self.config.load_in_8bit
+                kv_cache_quantization = self.config.kv_cache_quantization
+
+                # Auto-selection logic based on model size and available memory if not explicitly configured
+                if load_in_4bit is None and load_in_8bit is None and device == "cuda":
+                    # Estimate model size from name/path
+                    model_size_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+                    logging.info(f"Available GPU memory: {model_size_gb:.2f} GB")
+
+                    # Try to extract parameter count from model path
+                    model_path_lower = model_path.lower()
+                    param_count_b = 0
+                    if any(s in model_path_lower for s in ["0.8b", "0.8b", "1b"]):
+                        param_count_b = 0.8
+                    elif any(s in model_path_lower for s in ["1.8b", "2b"]):
+                        param_count_b = 1.8
+                    elif any(s in model_path_lower for s in ["4b", "7b"]):
+                        # 4B and 7B handled below
+                        if "4b" in model_path_lower:
+                            param_count_b = 4
+                        else:
+                            param_count_b = 7
+                    elif any(s in model_path_lower for s in ["13b", "14b"]):
+                        param_count_b = 13
+                    elif "32b" in model_path_lower:
+                        param_count_b = 32
+
+                    # Auto-selection rules based on plan
+                    if param_count_b > 0:
+                        # Memory targets: 0.8B < 1GB, 1.8B < 2GB, 4B < 3GB, 7B < 5GB, 13B < 9GB
+                        required_free_for_4bit = {
+                            0.8: 1.0,
+                            1.8: 2.0,
+                            4: 3.0,
+                            7: 5.0,
+                            13: 9.0,
+                        }.get(param_count_b, 0)
+
+                        if required_free_for_4bit > 0 and model_size_gb >= required_free_for_4bit * 0.8:
+                            # We have enough memory to fit 4bit with some headroom
+                            load_in_4bit = True
+                            logging.info(f"Auto-enabled 4-bit quantization for {param_count_b}B model based on available memory")
+                        elif required_free_for_4bit > 0 and model_size_gb >= required_free_for_4bit * 1.5:
+                            # Enough for 8bit
+                            load_in_8bit = True
+                            logging.info(f"Auto-enabled 8-bit quantization for {param_count_b}B model based on available memory")
+
+                # Create quantization config if needed
+                bnb_kwargs = {}
+                if load_in_4bit or load_in_8bit:
+                    if load_in_4bit:
+                        bnb_kwargs["load_in_4bit"] = True
+                        bnb_kwargs["bnb_4bit_use_double_quant"] = True
+                        bnb_kwargs["bnb_4bit_quant_type"] = "nf4"
+                        bnb_kwargs["bnb_4bit_compute_dtype"] = dtype
+                    if load_in_8bit:
+                        bnb_kwargs["load_in_8bit"] = True
+                    if kv_cache_quantization is None:
+                        kv_cache_quantization = True
+                    bnb_kwargs["llm_int8_enable_fp32_cpu_offload"] = kv_cache_quantization
+
+                    quantization_config = BitsAndBytesConfig(**bnb_kwargs)
+                    logging.info(f"Created BitsAndBytes quantization config: {bnb_kwargs}")
+
+            try:
+                if device == "cuda":
+                    model_kwargs = {
+                        "trust_remote_code": True,
+                        "torch_dtype": dtype,
+                        "device_map": "cuda",
+                    }
+                    if quantization_config is not None:
+                        model_kwargs["quantization_config"] = quantization_config
+
+                    model = Qwen3_5ForConditionalGeneration.from_pretrained(
+                        model_path, **model_kwargs
+                    )
+                else:
+                    # CPU doesn't support quantization anyway
+                    model = Qwen3_5ForConditionalGeneration.from_pretrained(
+                        model_path, trust_remote_code=True, torch_dtype=dtype
+                    )
+            except torch.OutOfMemoryError as oom:
+                error_msg = (
+                    f"OutOfMemoryError when loading model {model_path}. "
+                    f"Try enabling 4-bit quantization in your config. "
+                    f"Current VRAM: {torch.cuda.max_memory_allocated() / (1024**3):.2f} GB used"
                 )
-            else:
-                model = Qwen3_5ForConditionalGeneration.from_pretrained(
-                    model_path, trust_remote_code=True, torch_dtype=dtype
-                )
+                logging.error(error_msg)
+                raise RuntimeError(error_msg) from oom
 
             if model is None:
                 raise RuntimeError(
                     f"无法加载模型，请检查模型路径是否正确: {model_path}"
                 )
 
+            if device == "cuda":
+                memory_used = torch.cuda.max_memory_allocated() / (1024**3)
+                logging.info(f"CUDA memory after loading: {memory_used:.2f} GB")
+
             Transformers._model_cache[model_path] = (tokenizer, model)
             logging.info(f"模型加载完成: {model_path}")
 
             return tokenizer, model
 
-        return await asyncio.to_thread(_sync_load)
+        try:
+            return await asyncio.to_thread(_sync_load)
+        except Exception as e:
+            logging.error(f"Error loading model: {e}", exc_info=True)
+            raise
 
     async def chat(self, message: Any, tools: list[dict] | None = None) -> dict:
         """使用Transformers模型发送聊天请求，支持工具调用，获取完整响应"""
@@ -133,13 +301,16 @@ class Transformers(ModelTrait):
 
         # 在后台线程中运行生成，避免阻塞事件循环
         def _sync_generate():
+            # Get configurable inference parameters
+            params = self.get_inference_params()
             # 生成回复
             generated_ids = self._model.generate(
                 **model_inputs,
-                max_new_tokens=512,
-                temperature=self.config.temperature,
-                top_p=0.9,
-                do_sample=True,
+                max_new_tokens=params["max_new_tokens"],
+                temperature=params["temperature"],
+                top_p=params["top_p"],
+                repetition_penalty=params["repetition_penalty"],
+                do_sample=params["do_sample"],
             )
 
             # 解码输出
@@ -236,12 +407,15 @@ class Transformers(ModelTrait):
             """在线程中执行生成，允许异步获取流式输出"""
             nonlocal generated_tokens
             try:
+                # Get configurable inference parameters
+                params = self.get_inference_params()
                 self._model.generate(
                     **model_inputs,
-                    max_new_tokens=512,
-                    temperature=self.config.temperature,
-                    top_p=0.9,
-                    do_sample=True,
+                    max_new_tokens=params["max_new_tokens"],
+                    temperature=params["temperature"],
+                    top_p=params["top_p"],
+                    repetition_penalty=params["repetition_penalty"],
+                    do_sample=params["do_sample"],
                     streamer=streamer,
                 )
             finally:
