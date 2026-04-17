@@ -33,7 +33,7 @@ async def process_chat_message(
         return
     try:
         if input_box is not None:
-            input_box.setEnabled(False)
+            input_box.text_edit.setEnabled(False)
         if agent and websocket:
             if websocket.is_connected and websocket.client:
                 response = await agent.chat(text, websocket.client)
@@ -44,7 +44,7 @@ async def process_chat_message(
         logger.error("处理消息时出错: %s", exc)
     finally:
         if input_box is not None and is_running:
-            input_box.setEnabled(True)
+            input_box.text_edit.setEnabled(True)
             input_box.text_edit.setFocus()
             input_box._is_loading = False
 
