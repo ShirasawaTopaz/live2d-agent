@@ -3124,6 +3124,30 @@ url = "https://mirrors.pku.edu.cn/pypi/web/simple"
 reference = "pku"
 
 [[package]]
+name = "pytest-asyncio"
+version = "0.26.0"
+description = "Pytest support for asyncio"
+optional = false
+python-versions = ">=3.9"
+groups = ["dev"]
+files = [
+    {file = "pytest_asyncio-0.26.0-py3-none-any.whl", hash = "sha256:7b51ed894f4fbea1340262bdae5135797ebbe21d8638978e35d31c6d19f72fb0"},
+    {file = "pytest_asyncio-0.26.0.tar.gz", hash = "sha256:c4df2a697648241ff39e7f0e4a73050b03f123f760673956cf0d72a4990e312f"},
+]
+
+[package.dependencies]
+pytest = ">=8.2,<9"
+
+[package.extras]
+docs = ["sphinx (>=5.3)", "sphinx-rtd-theme (>=1)"]
+testing = ["coverage (>=6.2)", "hypothesis (>=5.7.1)"]
+
+[package.source]
+type = "legacy"
+url = "https://mirrors.pku.edu.cn/pypi/web/simple"
+reference = "pku"
+
+[[package]]
 name = "python-discovery"
 version = "1.2.2"
 description = "Python interpreter discovery"
@@ -4191,4 +4215,4 @@ reference = "pku"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.14,<3.15"
-content-hash = "0058a5fda1749ba9c800925c3281fc83902ddf90d3d1fc1364203824c0f801db"
+content-hash = "64292b91753503bc0c83c91577ae2316c11bc465dc940130f3eecce048b3fbd3"
