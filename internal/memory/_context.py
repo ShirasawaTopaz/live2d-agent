@@ -23,20 +23,33 @@ class ContextManager:
         max_messages: int = 20,
         max_tokens: int = 4096,
         compression_threshold: int = 15,
+        preserve_recent_count: int = 5,
+        token_trigger_ratio: float = 0.7,
     ):
         self.max_messages = max_messages
         self.max_tokens = max_tokens
         self.compression_threshold = compression_threshold
+        self.preserve_recent_count = preserve_recent_count
+        self.token_trigger_ratio = token_trigger_ratio
 
     def should_compress(self, session_manager: SessionManager) -> bool:
-        """检查是否需要压缩"""
+        """检查是否需要压缩（基于消息数和token数）"""
         message_count = session_manager.message_count()
-        # 如果消息数超过压缩阈值，触发压缩
+        estimated_tokens = session_manager.estimate_total_tokens()
+        token_limit = int(self.max_tokens * self.token_trigger_ratio)
+
         if message_count > self.compression_threshold:
             logger.debug(
                 f"Should compress: message_count={message_count} > threshold={self.compression_threshold}"
             )
             return True
+
+        if estimated_tokens > token_limit:
+            logger.debug(
+                f"Should compress: estimated_tokens={estimated_tokens} > {token_limit} (70% of {self.max_tokens})"
+            )
+            return True
+
         return False
 
     def truncate(
@@ -44,10 +57,9 @@ class ContextManager:
         turns: List[ConversationTurn],
         keep_last: int,
     ) -> Tuple[List[ConversationTurn], int, int]:
-        """简单截断：保留system prompt + 最后N条消息
+        """截断：保留system prompt + 最后N条消息 + 最近5条不压缩
         返回: (新的轮次列表, 起始索引, 结束索引)
         """
-        # 找到第一个非system消息
         first_user_idx = 0
         for i, turn in enumerate(turns):
             role = turn.message.get("role", "")
@@ -55,12 +67,18 @@ class ContextManager:
                 first_user_idx = i
                 break
 
-        # 计算需要保留多少条旧消息
-        keep_start = max(first_user_idx, len(turns) - keep_last)
+        total_user_messages = len(turns) - first_user_idx
+        preserve_count = min(self.preserve_recent_count, total_user_messages)
+        compress_count = total_user_messages - preserve_count
 
-        # 保留system prompt + 从keep_start开始的消息
+        keep_start = max(first_user_idx, len(turns) - preserve_count)
+
         if keep_start > first_user_idx:
             new_turns = turns[:first_user_idx] + turns[keep_start:]
+            logger.debug(
+                f"Truncate: preserving {preserve_count} recent messages, "
+                f"compressing {keep_start - first_user_idx} old messages"
+            )
             return new_turns, first_user_idx, keep_start - 1
         else:
             return turns, 0, 0

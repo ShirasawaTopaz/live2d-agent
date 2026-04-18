@@ -20,6 +20,8 @@ from internal.memory._context import ContextManager
 from internal.memory._summary import Summarizer
 from internal.memory._long_term import LongTermMemory
 from internal.memory._archive import ArchiveCompressor
+from internal.memory._importance import ImportanceScorer
+from internal.memory._tool_offload import ToolResultOffloader
 from internal.memory.storage._base import BaseStorage
 from internal.memory.storage._json import JSONStorage
 from internal.memory.storage._sqlite import SQLiteStorage
@@ -31,6 +33,7 @@ from internal.mcp import (
     MCPMessage,
     MCPMode,
 )
+from internal.mcp.protocol import estimate_tokens
 from internal.mcp.remote import RemoteMCPBackend
 
 
@@ -61,6 +64,8 @@ class MemoryManager:
         self._session_manager: Optional[SessionManager] = None
         self._context_manager: Optional[ContextManager] = None
         self._summarizer: Optional[Summarizer] = None
+        self._importance_scorer: Optional[ImportanceScorer] = None
+        self._tool_offloader: Optional[ToolResultOffloader] = None
         self._long_term: Optional[LongTermMemory] = None
         self._archive_compressor: Optional[ArchiveCompressor] = None
 
@@ -89,6 +94,14 @@ class MemoryManager:
     def summarizer(self) -> Summarizer:
         assert self._summarizer is not None
         return self._summarizer
+
+    @property
+    def importance_scorer(self) -> Optional[ImportanceScorer]:
+        return self._importance_scorer
+
+    @property
+    def tool_offloader(self) -> Optional[ToolResultOffloader]:
+        return self._tool_offloader
 
     @property
     def long_term(self) -> Optional[LongTermMemory]:
@@ -147,7 +160,8 @@ class MemoryManager:
             # Switch to default scope, but always start each app launch with a
             # fresh active context instead of reusing the previously loaded one.
             await self._mcp.switch_scope("default")
-            await self._mcp.clear_scope("default")
+            # NOTE: Do NOT clear scope here - preserve conversation history between app launches
+            # If you need a fresh context, call reset_active_context() explicitly instead
 
             self._initialized = True
             logger.info("MemoryManager initialized with MCP successfully")
@@ -163,6 +177,8 @@ class MemoryManager:
             max_messages=self.config.max_messages,
             max_tokens=self.config.max_tokens,
             compression_threshold=self.config.compression_threshold_messages,
+            preserve_recent_count=self.config.preserve_recent_count,
+            token_trigger_ratio=self.config.token_trigger_ratio,
         )
 
         self._session_manager = SessionManager(
@@ -173,7 +189,18 @@ class MemoryManager:
 
         self._summarizer = Summarizer(
             model_name=self.config.compression_model,
+            iterative_mode=getattr(self.config, "iterative_mode", True),
         )
+
+        self._importance_scorer = ImportanceScorer()
+
+        self._tool_offloader = ToolResultOffloader(
+            data_dir=os.path.join(self.config.data_dir, "tool_offload")
+        )
+
+        # Compression metrics (Phase 4)
+        self._compression_count: int = 0
+        self._last_compression_info: Optional[dict] = None
 
         if self.config.enable_long_term:
             self._long_term = LongTermMemory(
@@ -285,7 +312,7 @@ class MemoryManager:
             mcp_message = MCPMessage.create(
                 role=role,
                 content=content,
-                tokens=message.get("tokens"),
+                tokens=message.get("tokens") or estimate_tokens(content),
                 tool_name=message.get("tool_name"),
                 tool_call_id=message.get("tool_call_id"),
                 metadata=message.get("metadata", {}),
@@ -352,31 +379,39 @@ class MemoryManager:
         if len(turns) <= self.config.compression_threshold_messages:
             return False
 
-        # 找到需要压缩的范围：压缩除了最后几条之外的旧消息
         start_idx = 0
-        # 跳过system prompt
         for i, turn in enumerate(turns):
             if turn.message.get("role", "") != "system":
                 start_idx = i
                 break
 
-        end_idx = len(turns) - 5  # 保留最后4条不压缩
+        preserve_count = self.config.preserve_recent_count
+        end_idx = len(turns) - preserve_count
 
         if end_idx <= start_idx:
             return False
 
-        new_turns, summary_entry = self.summarizer.compress_old_messages(
-            turns, summary_text, start_idx, end_idx
-        )
+        original_count = len(turns)
 
-        # 替换当前会话的轮次
+        if self._importance_scorer and self._summarizer.iterative_mode:
+            new_turns, summary_entry = self.summarizer.compress_with_iterative(
+                turns, summary_text, start_idx, end_idx
+            )
+            method = "iterative"
+        else:
+            new_turns, summary_entry = self.summarizer.compress_old_messages(
+                turns, summary_text, start_idx, end_idx
+            )
+            method = "full_reconstruction"
+
         assert self.session_manager._current_session_id is not None
         session_id = self.session_manager._current_session_id
         self.session_manager._sessions[session_id] = new_turns
         self.session_manager._update_session_info()
         await self.save_current()
 
-        logger.info(f"Compressed context: {len(turns)} -> {len(new_turns)} messages")
+        self._record_compression(original_count, len(new_turns), method)
+        logger.info(f"Compressed context: {original_count} -> {len(new_turns)} messages ({method})")
         return True
 
     async def save_current(self) -> None:
@@ -461,3 +496,23 @@ class MemoryManager:
         return await self._archive_compressor.compress_all_eligible()
 
     # === End long-term archive compression API ===
+
+    # === Compression metrics and debug (Phase 4) ===
+    def get_compression_stats(self) -> dict:
+        """Get compression statistics"""
+        return {
+            "compression_count": self._compression_count,
+            "last_compression": self._last_compression_info,
+        }
+
+    def _record_compression(self, original_count: int, compressed_count: int, method: str) -> None:
+        """Record compression event for metrics"""
+        self._compression_count += 1
+        self._last_compression_info = {
+            "original_count": original_count,
+            "compressed_count": compressed_count,
+            "method": method,
+        }
+        logger.debug(
+            f"Compression #{self._compression_count}: {original_count} -> {compressed_count} messages ({method})"
+        )

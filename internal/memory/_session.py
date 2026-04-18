@@ -136,6 +136,19 @@ class SessionManager:
             return 0
         return len(self._sessions[self._current_session_id])
 
+    def estimate_total_tokens(self) -> int:
+        """估算当前会话总token数"""
+        if self._current_session_id is None:
+            return 0
+        total = 0
+        for turn in self._sessions[self._current_session_id]:
+            msg = turn.message
+            content = msg.get("content", "")
+            if not isinstance(content, str):
+                content = str(content)
+            total += len(content) // 4
+        return total
+
     async def save_current(self) -> None:
         """保存当前会话到存储"""
         if self._current_session_id is not None:

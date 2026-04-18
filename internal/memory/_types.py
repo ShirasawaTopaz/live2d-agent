@@ -23,6 +23,10 @@ class MemoryConfig:
         self.compression_enabled: bool = True
         self.compression_model: str = "default"
         self.compression_threshold_messages: int = 15
+        # Compression trigger settings (Phase 1)
+        self.preserve_recent_count: int = 5  # Recent messages to preserve verbatim
+        self.token_trigger_ratio: float = 0.7  # Trigger at 70% of token limit
+        self.iterative_mode: bool = True  # Iterative summarization (Phase 2)
         # Long-term storage compression settings
         self.long_term_compression_enabled: bool = True
         self.compression_cutoff_days: int = 7  # Don't compress if accessed within this many days
@@ -63,6 +67,10 @@ class MemoryConfig:
         cfg.compression_threshold_messages = data.get(
             "compression_threshold_messages", 15
         )
+        # Phase 1 settings
+        cfg.preserve_recent_count = data.get("preserve_recent_count", 5)
+        cfg.token_trigger_ratio = data.get("token_trigger_ratio", 0.7)
+        cfg.iterative_mode = data.get("iterative_mode", True)
         # Long-term compression
         cfg.long_term_compression_enabled = data.get(
             "long_term_compression_enabled", True
@@ -102,6 +110,9 @@ class MemoryConfig:
             "compression_enabled": self.compression_enabled,
             "compression_model": self.compression_model,
             "compression_threshold_messages": self.compression_threshold_messages,
+            "preserve_recent_count": self.preserve_recent_count,
+            "token_trigger_ratio": self.token_trigger_ratio,
+            "iterative_mode": self.iterative_mode,
             "long_term_compression_enabled": self.long_term_compression_enabled,
             "compression_cutoff_days": self.compression_cutoff_days,
             "compression_min_messages": self.compression_min_messages,
