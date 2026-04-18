@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Mapping, MutableMapping, AsyncIterator, Optional, TYPE_CHECKING
+from typing import Any, MutableMapping, AsyncIterator, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from internal.prompt_manager.prompt_manager import PromptManager
@@ -12,7 +12,7 @@ class ModelTrait(ABC):
 
     config: AIModelConfig
     history: list[MutableMapping[str, Any]] = []
-    options: Mapping[str, Any] | None = None
+    options: dict[str, Any] | None = None
     _tools_supported: bool = True
     _prompt_manager: Optional["PromptManager"] = None
 

@@ -37,6 +37,27 @@ class AIModelConfig:
     enable_cot: bool | None = None
     max_tool_call_retries: int | None = None
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "model": self.model,
+            "system_prompt": self.system_prompt,
+            "type": self.type.value,
+            "default": self.default,
+            "options": self.config if isinstance(self.config, dict) else {},
+            "temperature": self.temperature,
+            "api_key": self.api_key,
+            "streaming": self.streaming,
+            "load_in_4bit": self.load_in_4bit,
+            "load_in_8bit": self.load_in_8bit,
+            "kv_cache_quantization": self.kv_cache_quantization,
+            "top_p": self.top_p,
+            "repeat_penalty": self.repeat_penalty,
+            "max_new_tokens": self.max_new_tokens,
+            "enable_cot": self.enable_cot,
+            "max_tool_call_retries": self.max_tool_call_retries,
+        }
+
 
 @dataclass
 class PlanningConfig:
@@ -60,6 +81,16 @@ class PlanningConfig:
             auto_save=data.get("auto_save", True),
         )
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "storage_type": self.storage_type,
+            "storage_path": self.storage_path,
+            "max_concurrency": self.max_concurrency,
+            "max_plan_depth": self.max_plan_depth,
+            "auto_save": self.auto_save,
+        }
+
 
 @dataclass
 class RAGConfig:
@@ -81,6 +112,15 @@ class RAGConfig:
             top_k=data.get("top_k", 3),
         )
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "document_dir": self.document_dir,
+            "chunk_size": self.chunk_size,
+            "chunk_overlap": self.chunk_overlap,
+            "top_k": self.top_k,
+        }
+
 
 class Config:
     DEFAULT_CONFIG_PATH = "config.json"
@@ -95,15 +135,14 @@ class Config:
 
     @staticmethod
     async def load(config_path: str = DEFAULT_CONFIG_PATH) -> "Config":
-        config = Config()
         try:
             async with aiofiles.open(config_path, encoding="utf-8") as file:
                 data = await file.read()
         except FileNotFoundError:
-            return config
+            return Config()
 
         if not data.strip():
-            return config
+            return Config()
 
         try:
             json_data = json.loads(data)
@@ -117,7 +156,12 @@ class Config:
                 f"Config file '{config_path}' must contain a JSON object at the top level."
             )
 
-        config._from_dict(json_data)
+        return Config.from_dict(json_data)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Config":
+        config = cls()
+        config._from_dict(data)
         return config
 
     def _from_dict(self, data: dict):
@@ -150,6 +194,16 @@ class Config:
         else:
             # Use default RAG configuration (disabled by default)
             self.rag = RAGConfig()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "live2dSocket": self.live2dSocket,
+            "models": [model.to_dict() for model in self.models],
+            "memory": self.memory.to_dict(),
+            "sandbox": self.sandbox.to_dict(),
+            "planning": self.planning.to_dict(),
+            "rag": self.rag.to_dict(),
+        }
 
     # 调用最上面设置为default的模型配置，如果都没设置default=true，则默认调用第一个
     def get_default_model_config(self) -> AIModelConfig:

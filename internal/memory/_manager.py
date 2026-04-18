@@ -109,15 +109,30 @@ class MemoryManager:
             # Initialize MCP context manager
             logger.info("Initializing MCP (Model Context Protocol)...")
 
-            # Extract MCP configuration from memory config
-            # For backward compatibility, reuse existing settings
-            mcp_config = MCPConfig(
-                enabled=True,
-                max_working_messages=self.config.max_messages,
-                max_total_tokens=self.config.max_tokens,
-                compression_threshold_messages=self.config.compression_threshold_messages,
-                enable_long_term=self.config.enable_long_term,
-                storage_type=self.config.storage_type,
+            # Extract MCP configuration from memory config.
+            # Keep legacy memory fields as fallbacks so existing config.json files still work.
+            mcp_config = MCPConfig.from_dict(
+                {
+                    "enabled": self.config.use_mcp,
+                    "mcp_mode": getattr(self.config, "mcp_mode", "local"),
+                    "compression_strategy": getattr(
+                        self.config, "compression_strategy", "summary"
+                    ),
+                    "max_working_messages": getattr(
+                        self.config, "max_working_messages", self.config.max_messages
+                    ),
+                    "max_recent_tokens": getattr(
+                        self.config, "max_recent_tokens", self.config.max_tokens
+                    ),
+                    "max_total_tokens": getattr(
+                        self.config, "max_total_tokens", self.config.max_tokens
+                    ),
+                    "enable_long_term": self.config.enable_long_term,
+                    "storage_type": self.config.storage_type,
+                    "remote": getattr(self.config, "remote", {}),
+                    "auto_compress": self.config.compress_on_startup,
+                    "compression_threshold_messages": self.config.compression_threshold_messages,
+                }
             )
 
             data_dir = self.config.data_dir.replace("/memory", "/mcp")

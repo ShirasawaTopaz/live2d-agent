@@ -2,6 +2,8 @@ import asyncio
 import logging
 from typing import Any
 
+from internal.config.config import Config
+from internal.config.editor import RuntimeApplyDecision
 from internal.app.runtime import (
     ApplicationRuntime,
     QueueRuntimeCoordinator,
@@ -26,6 +28,7 @@ class Live2DAgentApp:
         self.agent: Any = None
         self.ws: ReconnectingWebSocket | None = None
         self.config: Any = None
+        self.settings_window: Any = None
         self._processing = False
         self._context_lock = asyncio.Lock()
         self.runtime_state = QueueRuntimeCoordinator()
@@ -147,7 +150,87 @@ class Live2DAgentApp:
             self.input_box.hide()
 
     def open_settings(self) -> None:
-        logger.info("打开设置对话框")
+        logger.info("打开设置窗口")
+        from internal.ui.settings_window import SettingsWindow
+
+        if self.settings_window is not None:
+            self.settings_window.show()
+            self.settings_window.raise_()
+            self.settings_window.activateWindow()
+            return
+
+        self.settings_window = SettingsWindow(
+            config_path=Config.DEFAULT_CONFIG_PATH,
+            on_saved=self.on_config_saved,
+        )
+        self.settings_window.destroyed.connect(self._on_settings_window_destroyed)
+        self.settings_window.show()
+        self.settings_window.raise_()
+        self.settings_window.activateWindow()
+
+    def _on_settings_window_destroyed(self, _obj: Any = None) -> None:
+        self.settings_window = None
+
+    def on_config_saved(self, config: Config, decision: RuntimeApplyDecision) -> None:
+        asyncio.create_task(self._apply_saved_config(config, decision))
+
+    async def _apply_saved_config(
+        self,
+        config: Config,
+        decision: RuntimeApplyDecision,
+    ) -> None:
+        messages: list[str] = []
+
+        if decision.websocket_changed:
+            websocket_reloaded = await self._reload_websocket(config)
+            if websocket_reloaded:
+                messages.append("WebSocket 已按新地址重连。")
+            else:
+                messages.append("WebSocket 按新地址重连失败，请检查配置。")
+
+        if decision.default_model_changed:
+            self._reload_agent(config)
+            messages.append("默认模型已热更新。")
+
+        self.config = config
+
+        if decision.requires_restart:
+            messages.append("部分配置需重启应用后生效。")
+
+        if messages and self.settings_window is not None:
+            from PySide6.QtWidgets import QMessageBox
+
+            QMessageBox.information(self.settings_window, "配置已应用", "\n".join(messages))
+
+    async def _reload_websocket(self, config: Config) -> bool:
+        from internal.app.bootstrap import create_websocket
+
+        was_running = self.runtime_state.is_running
+        old_ws = self.ws
+        try:
+            new_ws = await create_websocket(config)
+            await self.runtime_state.stop()
+            if old_ws is not None:
+                await old_ws.disconnect()
+            self.ws = new_ws
+            self.runtime_state.attach(self.ws)
+            if was_running:
+                self.runtime_state.start()
+            return self.ws.is_connected
+        except Exception as exc:
+            logger.error("WebSocket 热更新失败: %s", exc, exc_info=True)
+            if was_running:
+                self.runtime_state.start()
+            return False
+
+    def _reload_agent(self, config: Config) -> None:
+        from internal.app.bootstrap import create_runtime_agent
+
+        self.agent = create_runtime_agent(config)
+        if self.bubble_widget is not None:
+            self.agent.bubble_widget = self.bubble_widget
+        if self.input_box is not None:
+            self.input_box.set_agent(self.agent)
 
     def quit(self) -> None:
         logger.info("正在退出...")
@@ -158,6 +241,9 @@ class Live2DAgentApp:
         await self.runtime.run(self._is_running)
 
     async def cleanup(self) -> None:
+        if self.settings_window is not None:
+            self.settings_window.close()
+            self.settings_window = None
         await cleanup_application(
             input_box=self.input_box,
             bubble_widget=self.bubble_widget,

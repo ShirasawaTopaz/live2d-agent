@@ -5,6 +5,7 @@ from .styles import get_styles, STYLES
 from .title_bar import TitleBar
 from .history_manager import InputHistory
 from .bubble_widget import BubbleWidget
+from .settings_window import SettingsWindow
 
 __all__ = [
     "FloatingInputBox",
@@ -13,4 +14,5 @@ __all__ = [
     "TitleBar",
     "InputHistory",
     "BubbleWidget",
+    "SettingsWindow",
 ]

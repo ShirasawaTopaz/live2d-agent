@@ -15,10 +15,60 @@ class OnlineModel(ModelTrait):
         # 系统提示词会在首次使用时异步解析，这里暂时存储原始配置
         self._raw_system_prompt = config.system_prompt
         self.history: list[MutableMapping[str, Any]] = []
-        self.options = self.config.config
-        self._tools_supported: bool | None = None
+        self.options = {}
+        if isinstance(self.config.config, dict):
+            self.options.update(self.config.config)
+        self._tools_supported: bool = True
         self._client: Any | None = None
         self._system_prompt_resolved: bool = False
+
+    def _build_request_params(
+        self,
+        *,
+        tools: list[dict] | None,
+        stream: bool,
+    ) -> dict[str, Any]:
+        """Build OpenAI-compatible request parameters from typed config + options."""
+        params: dict[str, Any] = {
+            "model": self.config.model,
+            "messages": self.history,
+            "tools": tools,
+            "stream": stream,
+        }
+
+        options: dict[str, Any] = dict(self.options or {})
+        api = options.pop("api", None)
+        if api is not None:
+            self._api = api
+
+        # Top-level typed fields take precedence, but options still work as fallback.
+        temperature = self.config.temperature
+        if temperature is None:
+            temperature = options.pop("temperature", 0.7)
+        else:
+            options.pop("temperature", None)
+        params["temperature"] = temperature
+
+        if self.config.max_new_tokens is not None:
+            max_tokens = self.config.max_new_tokens
+            options.pop("max_tokens", None)
+        else:
+            max_tokens = options.pop("max_tokens", 512)
+        params["max_tokens"] = max_tokens
+
+        if self.config.top_p is not None:
+            options["top_p"] = self.config.top_p
+        if self.config.repeat_penalty is not None:
+            options["repeat_penalty"] = self.config.repeat_penalty
+        if self.config.enable_cot is not None:
+            options["enable_cot"] = self.config.enable_cot
+
+        # Merge remaining provider-specific options.
+        for key, value in options.items():
+            if key not in ["api", "api_key"]:
+                params[key] = value
+
+        return params
 
     async def _ensure_system_prompt(self):
         """确保系统提示词已解析"""
@@ -30,14 +80,15 @@ class OnlineModel(ModelTrait):
             self.history = [{"role": "system", "content": resolved_prompt}]
             self._system_prompt_resolved = True
 
-        self._api: str | None = self.config.config.get("api", None)
+        options = self.options or {}
+        self._api = options.get("api", None)
         self._api_key: str | None = None
         # Check if api_key exists directly in model_data (top-level)
         if hasattr(self.config, "api_key"):
             self._api_key = getattr(self.config, "api_key")
         # Also check in options
         if self._api_key is None:
-            self._api_key = self.config.config.get("api_key", None)
+            self._api_key = options.get("api_key", None)
         self._model: str = self.config.model
 
     def _get_client(self):
@@ -92,25 +143,7 @@ class OnlineModel(ModelTrait):
         try:
             if self._client is None:
                 raise RuntimeError("客户端加载失败，请检查配置")
-            # Get configuration with defaults
-            temperature = self.options.get("temperature", 0.7) if self.options else 0.7
-            max_tokens = self.options.get("max_tokens", 512) if self.options else 512
-
-            # Build base parameters
-            params = {
-                "model": self._model,
-                "messages": self.history,
-                "tools": tools if use_tools else None,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-                "stream": False,
-            }
-
-            # Add all extra options from config (e.g. thinking, top_p, etc.)
-            if self.options:
-                for key, value in self.options.items():
-                    if key not in ["api", "api_key", "temperature", "max_tokens"]:
-                        params[key] = value
+            params = self._build_request_params(tools=tools if use_tools else None, stream=False)
 
             response = await self._client.chat.completions.create(**params)
             if use_tools:
@@ -133,29 +166,7 @@ class OnlineModel(ModelTrait):
                 self._tools_supported = False
                 if self._client is None:
                     raise RuntimeError("客户端加载失败，请检查配置")
-                # Get configuration with defaults
-                temperature = (
-                    self.options.get("temperature", 0.7) if self.options else 0.7
-                )
-                max_tokens = (
-                    self.options.get("max_tokens", 512) if self.options else 512
-                )
-
-                # Build base parameters
-                params = {
-                    "model": self._model,
-                    "messages": self.history,
-                    "temperature": temperature,
-                    "max_tokens": max_tokens,
-                    "tools": None,
-                    "stream": False,
-                }
-
-                # Add all extra options from config (e.g. thinking, top_p, etc.)
-                if self.options:
-                    for key, value in self.options.items():
-                        if key not in ["api", "api_key", "temperature", "max_tokens"]:
-                            params[key] = value
+                params = self._build_request_params(tools=None, stream=False)
 
                 response = await self._client.chat.completions.create(**params)
                 # Check if choices is valid and not empty
@@ -248,24 +259,7 @@ class OnlineModel(ModelTrait):
                     raise
 
         # 流式生成普通文本响应
-        temperature = self.options.get("temperature", 0.7) if self.options else 0.7
-        max_tokens = self.options.get("max_tokens", 512) if self.options else 512
-
-        # Build base parameters
-        params = {
-            "model": self._model,
-            "messages": self.history,
-            "tools": None,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": True,
-        }
-
-        # Add all extra options from config (e.g. thinking, top_p, etc.)
-        if self.options:
-            for key, value in self.options.items():
-                if key not in ["api", "api_key", "temperature", "max_tokens"]:
-                    params[key] = value
+        params = self._build_request_params(tools=None, stream=True)
 
         full_content = ""
         stream = await self._client.chat.completions.create(**params)

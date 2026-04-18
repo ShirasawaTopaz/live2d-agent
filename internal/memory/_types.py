@@ -14,26 +14,40 @@ Message = MutableMapping[str, Any]
 class MemoryConfig:
     """Memory配置"""
 
-    enabled: bool = True
-    storage_type: str = "json"  # json or sqlite
-    data_dir: str = "./data/memory"
-    max_messages: int = 20
-    max_tokens: int = 4096
-    compression_enabled: bool = True
-    compression_model: str = "default"
-    compression_threshold_messages: int = 15
-    # Long-term storage compression settings
-    long_term_compression_enabled: bool = True
-    compression_cutoff_days: int = 7  # Don't compress if accessed within this many days
-    compression_min_messages: int = 10  # Don't compress sessions with fewer messages
-    compress_on_startup: bool = True  # Auto-compress during initialization
-    # End long-term compression settings
-    enable_long_term: bool = True
-    long_term_storage: str = "sqlite"
-    auto_cleanup: bool = True
-    max_sessions: int = 10
-    # MCP (Model Context Protocol) settings
-    use_mcp: bool = False
+    def __init__(self) -> None:
+        self.enabled: bool = True
+        self.storage_type: str = "json"  # json or sqlite
+        self.data_dir: str = "./data/memory"
+        self.max_messages: int = 20
+        self.max_tokens: int = 4096
+        self.compression_enabled: bool = True
+        self.compression_model: str = "default"
+        self.compression_threshold_messages: int = 15
+        # Long-term storage compression settings
+        self.long_term_compression_enabled: bool = True
+        self.compression_cutoff_days: int = 7  # Don't compress if accessed within this many days
+        self.compression_min_messages: int = 10  # Don't compress sessions with fewer messages
+        self.compress_on_startup: bool = True  # Auto-compress during initialization
+        # End long-term compression settings
+        self.enable_long_term: bool = True
+        self.long_term_storage: str = "sqlite"
+        self.auto_cleanup: bool = True
+        self.max_sessions: int = 10
+        # MCP (Model Context Protocol) settings
+        self.use_mcp: bool = False
+        self.mcp_mode: str = "local"
+        self.compression_strategy: str = "summary"
+        self.max_working_messages: int = 10
+        self.max_recent_tokens: int = 2048
+        self.max_total_tokens: int = 4096
+        self.remote: dict[str, Any] = {
+            "enabled": False,
+            "endpoint": "http://localhost:8080/v1",
+            "api_key": None,
+            "timeout": 30,
+            "verify_ssl": True,
+        }
+
     """Enable Model Context Protocol for enhanced context management"""
 
     @classmethod
@@ -62,6 +76,20 @@ class MemoryConfig:
         cfg.auto_cleanup = data.get("auto_cleanup", True)
         cfg.max_sessions = data.get("max_sessions", 10)
         cfg.use_mcp = data.get("use_mcp", False)
+        cfg.mcp_mode = data.get("mcp_mode", "local")
+        cfg.compression_strategy = data.get("compression_strategy", "summary")
+        cfg.max_working_messages = data.get("max_working_messages", cfg.max_messages)
+        cfg.max_recent_tokens = data.get("max_recent_tokens", cfg.max_tokens)
+        cfg.max_total_tokens = data.get("max_total_tokens", cfg.max_tokens)
+        remote = data.get("remote", None)
+        if isinstance(remote, dict):
+            cfg.remote = {
+                "enabled": remote.get("enabled", False),
+                "endpoint": remote.get("endpoint", "http://localhost:8080/v1"),
+                "api_key": remote.get("api_key"),
+                "timeout": remote.get("timeout", 30),
+                "verify_ssl": remote.get("verify_ssl", True),
+            }
         return cfg
 
     def to_dict(self) -> dict:
@@ -83,6 +111,12 @@ class MemoryConfig:
             "auto_cleanup": self.auto_cleanup,
             "max_sessions": self.max_sessions,
             "use_mcp": self.use_mcp,
+            "mcp_mode": self.mcp_mode,
+            "compression_strategy": self.compression_strategy,
+            "max_working_messages": self.max_working_messages,
+            "max_recent_tokens": self.max_recent_tokens,
+            "max_total_tokens": self.max_total_tokens,
+            "remote": self.remote,
         }
 
 

@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from internal.config.config import AIModelType, Config
+from internal.config.config import AIModelConfig, AIModelType, Config
 
 
 def load_config(
@@ -106,3 +106,102 @@ def test_repeated_loads_do_not_accumulate_models(tmp_path):
     assert len(second.models) == 1
     assert first.models is not second.models
     assert second.get_default_model_config().name == "single-model"
+
+
+def test_config_to_dict_roundtrip_for_known_sections():
+    config_data = {
+        "live2dSocket": "ws://127.0.0.1:10086/api",
+        "models": [
+            {
+                "name": "model-a",
+                "model": "m-a",
+                "type": "ollama",
+                "system_prompt": {"core/base_rules": True},
+                "default": True,
+                "temperature": 0.2,
+                "options": {"top_p": 0.9},
+                "streaming": True,
+            }
+        ],
+        "memory": {"enabled": True, "max_messages": 12},
+        "sandbox": {"enabled": True, "approval": {"timeout_seconds": 45}},
+        "planning": {"enabled": True, "storage_type": "json", "storage_path": "data/plans.json"},
+        "rag": {"enabled": True, "document_dir": "./docs", "chunk_size": 256, "chunk_overlap": 16, "top_k": 5},
+    }
+
+    config = Config.from_dict(config_data)
+    dumped = config.to_dict()
+    restored = Config.from_dict(dumped)
+
+    assert restored.live2dSocket == "ws://127.0.0.1:10086/api"
+    assert restored.get_default_model_config().name == "model-a"
+    assert restored.memory.max_messages == 12
+    assert restored.sandbox.approval.timeout_seconds == 45
+    assert restored.planning.enabled is True
+    assert restored.rag.document_dir == "./docs"
+
+
+def test_memory_config_preserves_mcp_fields_roundtrip():
+    config_data = {
+        "memory": {
+            "enabled": True,
+            "use_mcp": True,
+            "mcp_mode": "remote",
+            "compression_strategy": "sliding",
+            "max_working_messages": 24,
+            "max_recent_tokens": 8192,
+            "max_total_tokens": 12288,
+            "remote": {
+                "enabled": True,
+                "endpoint": "http://localhost:8080/v1",
+                "api_key": "secret",
+                "timeout": 45,
+                "verify_ssl": False,
+            },
+        }
+    }
+
+    config = Config.from_dict(config_data)
+    dumped = config.to_dict()
+    restored = Config.from_dict(dumped)
+
+    assert restored.memory.use_mcp is True
+    assert restored.memory.mcp_mode == "remote"
+    assert restored.memory.compression_strategy == "sliding"
+    assert restored.memory.max_working_messages == 24
+    assert restored.memory.max_recent_tokens == 8192
+    assert restored.memory.max_total_tokens == 12288
+    assert restored.memory.remote["enabled"] is True
+    assert restored.memory.remote["verify_ssl"] is False
+
+
+def test_online_model_prefers_top_level_model_fields_over_options():
+    pytest.importorskip("openai")
+    from internal.agent.agent_support.online import OnlineModel
+
+    model = OnlineModel(
+        AIModelConfig(
+            name="online",
+            model="demo-endpoint",
+            system_prompt="hi",
+            type=AIModelType.Online,
+            default=True,
+            config={"api": "https://example.invalid", "temperature": 0.1, "max_tokens": 128},
+            temperature=0.55,
+            api_key="top-level-key",
+            top_p=0.93,
+            repeat_penalty=1.07,
+            max_new_tokens=256,
+            enable_cot=True,
+            max_tool_call_retries=3,
+        )
+    )
+
+    params = model._build_request_params(tools=None, stream=False)
+
+    assert model._api == "https://example.invalid"
+    assert params["temperature"] == 0.55
+    assert params["max_tokens"] == 256
+    assert params["top_p"] == 0.93
+    assert params["repeat_penalty"] == 1.07
+    assert params["enable_cot"] is True
