@@ -1,5 +1,45 @@
 # AGENTS.md
 
+**Generated:** 2026-04-19
+**Commit:** cbcd075
+
+## OVERVIEW
+Python desktop AI Agent with PySide6 UI, WebSocket Live2D integration, extensible skill system.
+
+## WHERE TO LOOK
+| Task | Location | Notes |
+|------|----------|-------|
+| Startup | `__main__.py` | Entry point → `Live2DAgentApp().run()` |
+| Config | `internal/config/` | Config loading, validation |
+| Agent Core | `internal/agent/` | Tool setup, API, bubble timing |
+| Memory | `internal/memory/` | Session, summary, compression |
+| MCP | `internal/mcp/` | Protocol, backends, manager |
+| UI | `internal/ui/` | Qt widgets, input, bubble |
+| Skills | `internal/skill/` | Registry, manager, dynamic loader |
+| RAG | `internal/rag/` | Embeddings, index, document |
+| Tests | `tests/` | Domain-matched subpackages |
+
+## STRUCTURE
+```
+live2oder/
+├── __main__.py              # App entry
+├── build.py                # PyInstaller packaging
+├── pyproject.toml          # Python 3.14, poetry, pytest, ruff, mypy
+├── internal/
+│   ├── app/              # App bootstrap, runtime, tray
+│   ├── agent/            # Tools, API, bubble timing
+│   ├── config/           # Config loading, editor
+│   ├── memory/           # Session, summary, compression
+│   ├── mcp/             # Protocol, backends, remote
+│   ├── rag/             # Embeddings, index, document
+│   ├── skill/            # Registry, manager, dynamic loader
+│   ├── ui/              # Qt widgets
+│   └── websocket/        # Client, reconnect
+├── tests/                # Domain-matched test packages
+├── prompt_modules/       # Prompt templates
+└── skills/              # Hot-reloadable skills
+```
+
 ## Runtime Facts
 - Use `poetry` for all repo commands. CI installs with `poetry install --with dev` on Python `3.14` exactly; `pyproject.toml`, `mypy.ini`, and `.ruff.toml` all target 3.14.
 - Main app entrypoint is `poetry run python __main__.py`.
@@ -26,3 +66,15 @@
 - Packaging command is `poetry run python build.py`.
 - `build.py` requires PyInstaller in the active environment but PyInstaller is not declared in `pyproject.toml`; install it separately before building.
 - Packaged assets are defined by `live2d-agent.spec`. Current spec bundles `skills/`, `prompt_modules/`, both config examples, `README.md`, and `USER_GUIDE.md` alongside the executable.
+
+## CONVENTIONS
+- Python: `>=3.14,<3.15` exactly
+- Poetry-driven CI: `poetry install --with dev`, `poetry run ...`
+- Test discovery: `tests/` only, files named `test_*.py`
+- Domain-matched test subpackages: `tests/agent/`, `tests/planning/`, `tests/rag/`, `tests/dynamic_tool/`, etc.
+- Prompt modules: Chinese primary language, modular structure in `prompt_modules/`
+
+## ANTI-PATTERNS (THIS PROJECT)
+- No `[project.scripts]` console entry in `pyproject.toml` - use `poetry run python __main__.py` explicitly
+- `tests/planning/test_integration.py` excluded from default pytest runs (intentionally skipped)
+- Prompt module inconsistencies: English mixed in `prompt_modules/core/tool_calling.md` and capability modules

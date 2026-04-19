@@ -10,8 +10,6 @@ from internal.config.config import AIModelConfig, AIModelType
 from internal.memory import MemoryManager
 from internal.memory._small_model_profile import classify_small_model_memory_profile
 from internal.memory._types import MemoryConfig
-from internal.mcp import MCPMessage, MCPParticipant
-
 
 def _make_model_config(
     *,
