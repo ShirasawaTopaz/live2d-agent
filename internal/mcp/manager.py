@@ -250,11 +250,16 @@ class MCPContextManager:
         """压缩待处理的工作内存消息"""
         async with self._lock:
             working = self._get_working_memory(scope_id)
-            if working.count <= self.config.max_working_messages:
+            preserve_recent = self.config.max_working_messages
+            profile = self.config.small_model_memory_profile
+            if profile is not None and profile.enabled:
+                preserve_recent = max(1, profile.preserve_recent_count)
+
+            if working.count <= preserve_recent:
                 return
 
             # 取要压缩的旧消息
-            compress_count = working.count - self.config.max_working_messages
+            compress_count = working.count - preserve_recent
             to_compress = working.messages[:compress_count]
             keep = working.messages[compress_count:]
 

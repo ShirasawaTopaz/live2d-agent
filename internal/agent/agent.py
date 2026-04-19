@@ -226,6 +226,9 @@ def create_agent(
     """根据配置创建Agent实例。"""
     rag_config = global_config.rag if global_config is not None else None
 
+    if memory_config is not None:
+        setattr(memory_config, "small_model_memory_model_config", model_config)
+
     if model_config.type == AIModelType.OllamaModel:
         model = OllamaModel(model_config)
     elif model_config.type == AIModelType.TransformersModel:
