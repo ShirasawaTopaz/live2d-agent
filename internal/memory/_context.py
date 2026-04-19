@@ -6,6 +6,7 @@ Context Window Manager - Reference Implementation
 import logging
 from typing import List, Tuple
 
+from internal.memory._small_model_profile import SmallModelMemoryProfile
 from internal.memory._types import ConversationTurn, Message
 from internal.memory._session import SessionManager
 
@@ -25,12 +26,19 @@ class ContextManager:
         compression_threshold: int = 15,
         preserve_recent_count: int = 5,
         token_trigger_ratio: float = 0.7,
+        profile: SmallModelMemoryProfile | None = None,
     ):
         self.max_messages = max_messages
         self.max_tokens = max_tokens
         self.compression_threshold = compression_threshold
         self.preserve_recent_count = preserve_recent_count
         self.token_trigger_ratio = token_trigger_ratio
+        self.profile = profile
+
+    def get_preserve_recent_count(self) -> int:
+        if self.profile is not None and self.profile.enabled:
+            return max(1, self.profile.preserve_recent_count)
+        return max(1, self.preserve_recent_count)
 
     def should_compress(self, session_manager: SessionManager) -> bool:
         """检查是否需要压缩（基于消息数和token数）"""
@@ -68,7 +76,7 @@ class ContextManager:
                 break
 
         total_user_messages = len(turns) - first_user_idx
-        preserve_count = min(self.preserve_recent_count, total_user_messages)
+        preserve_count = min(self.get_preserve_recent_count(), total_user_messages)
         compress_count = total_user_messages - preserve_count
 
         keep_start = max(first_user_idx, len(turns) - preserve_count)

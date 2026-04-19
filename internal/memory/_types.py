@@ -51,6 +51,7 @@ class MemoryConfig:
             "timeout": 30,
             "verify_ssl": True,
         }
+        self.small_model_memory_profile: dict[str, Any] | None = None
 
     """Enable Model Context Protocol for enhanced context management"""
 
@@ -98,6 +99,9 @@ class MemoryConfig:
                 "timeout": remote.get("timeout", 30),
                 "verify_ssl": remote.get("verify_ssl", True),
             }
+        small_model_memory_profile = data.get("small_model_memory_profile")
+        if isinstance(small_model_memory_profile, dict):
+            cfg.small_model_memory_profile = small_model_memory_profile
         return cfg
 
     def to_dict(self) -> dict:
@@ -128,6 +132,7 @@ class MemoryConfig:
             "max_recent_tokens": self.max_recent_tokens,
             "max_total_tokens": self.max_total_tokens,
             "remote": self.remote,
+            "small_model_memory_profile": self.small_model_memory_profile,
         }
 
 

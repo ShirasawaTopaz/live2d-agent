@@ -7,6 +7,7 @@ import asyncio
 import logging
 import os
 from collections.abc import Coroutine
+from dataclasses import asdict
 from typing import List, Optional
 
 from internal.memory._types import (
@@ -21,6 +22,10 @@ from internal.memory._summary import Summarizer
 from internal.memory._long_term import LongTermMemory
 from internal.memory._archive import ArchiveCompressor
 from internal.memory._importance import ImportanceScorer
+from internal.memory._small_model_profile import (
+    SmallModelMemoryProfile,
+    classify_small_model_memory_profile,
+)
 from internal.memory._tool_offload import ToolResultOffloader
 from internal.memory.storage._base import BaseStorage
 from internal.memory.storage._json import JSONStorage
@@ -68,6 +73,7 @@ class MemoryManager:
         self._tool_offloader: Optional[ToolResultOffloader] = None
         self._long_term: Optional[LongTermMemory] = None
         self._archive_compressor: Optional[ArchiveCompressor] = None
+        self._small_model_profile: Optional[SmallModelMemoryProfile] = None
 
         # MCP integration
         self._mcp: Optional[MCPContextManager] = None
@@ -117,6 +123,10 @@ class MemoryManager:
             logger.info("Memory system disabled by configuration")
             return
 
+        self._small_model_profile = self._resolve_small_model_profile()
+        self._log_small_model_profile_decision()
+        setattr(self.config, "small_model_memory_profile", self._small_model_profile)
+
         # Check if MCP is enabled
         if self.config.use_mcp:
             # Initialize MCP context manager
@@ -145,6 +155,11 @@ class MemoryManager:
                     "remote": getattr(self.config, "remote", {}),
                     "auto_compress": self.config.compress_on_startup,
                     "compression_threshold_messages": self.config.compression_threshold_messages,
+                    "small_model_memory_profile": (
+                        asdict(self._small_model_profile)
+                        if self._small_model_profile is not None
+                        else None
+                    ),
                 }
             )
 
@@ -168,6 +183,7 @@ class MemoryManager:
             return
 
         # Original initialization for legacy memory system
+
         # 创建存储
         self._storage = create_storage(self.config)
         await self._storage.init()
@@ -179,6 +195,7 @@ class MemoryManager:
             compression_threshold=self.config.compression_threshold_messages,
             preserve_recent_count=self.config.preserve_recent_count,
             token_trigger_ratio=self.config.token_trigger_ratio,
+            profile=self._small_model_profile,
         )
 
         self._session_manager = SessionManager(
@@ -190,6 +207,7 @@ class MemoryManager:
         self._summarizer = Summarizer(
             model_name=self.config.compression_model,
             iterative_mode=getattr(self.config, "iterative_mode", True),
+            profile=self._small_model_profile,
         )
 
         self._importance_scorer = ImportanceScorer()
@@ -206,6 +224,7 @@ class MemoryManager:
             self._long_term = LongTermMemory(
                 storage=self._storage,
                 enabled=True,
+                profile=self._small_model_profile,
             )
 
         # 创建长期归档压缩器
@@ -386,6 +405,8 @@ class MemoryManager:
                 break
 
         preserve_count = self.config.preserve_recent_count
+        if self._small_model_profile is not None and self._small_model_profile.enabled:
+            preserve_count = self.context_manager.get_preserve_recent_count()
         end_idx = len(turns) - preserve_count
 
         if end_idx <= start_idx:
@@ -438,6 +459,64 @@ class MemoryManager:
 
         injection = self.long_term.build_injection_prompt(entries)
         return system_prompt + injection
+
+    def _resolve_small_model_profile(self) -> SmallModelMemoryProfile | None:
+        runtime_profile = getattr(self.config, "small_model_memory_profile", None)
+        if isinstance(runtime_profile, SmallModelMemoryProfile):
+            return runtime_profile
+
+        model_config = getattr(self.config, "small_model_memory_model_config", None)
+        if _looks_like_model_config(model_config):
+            profile = classify_small_model_memory_profile(model_config)
+            setattr(self.config, "small_model_memory_profile", profile)
+            return profile
+
+        return None
+
+    def _log_small_model_profile_decision(self) -> None:
+        profile = self._small_model_profile
+        model_config = getattr(self.config, "small_model_memory_model_config", None)
+        model_identifier = (
+            getattr(model_config, "model", None)
+            if _looks_like_model_config(model_config)
+            else "unknown"
+        )
+        backend = (
+            _get_model_backend_value(model_config)
+            if _looks_like_model_config(model_config)
+            else "unknown"
+        )
+
+        if profile is None:
+            logger.info(
+                "Small-model memory profile decision: fallback=legacy-default "
+                "(reason=no-model-config backend=%s model=%s)",
+                backend,
+                model_identifier,
+            )
+            return
+
+        if profile.enabled:
+            logger.info(
+                "Small-model memory profile decision: enabled "
+                "(backend=%s model=%s reason=%s style=%s preserve_recent=%s summary_cap=%s injection=%s)",
+                backend,
+                model_identifier,
+                profile.reason,
+                profile.summary_style,
+                profile.preserve_recent_count,
+                profile.summary_length_cap,
+                profile.injection_compactness,
+            )
+            return
+
+        logger.info(
+            "Small-model memory profile decision: fallback=legacy-default "
+            "(backend=%s model=%s reason=%s)",
+            backend,
+            model_identifier,
+            profile.reason,
+        )
 
     async def estimate_total_tokens(self) -> int:
         """估算当前上下文token数"""
@@ -516,3 +595,22 @@ class MemoryManager:
         logger.debug(
             f"Compression #{self._compression_count}: {original_count} -> {compressed_count} messages ({method})"
         )
+
+
+def _looks_like_model_config(value: object) -> bool:
+    return (
+        value is not None
+        and hasattr(value, "model")
+        and hasattr(value, "type")
+        and hasattr(value, "config")
+    )
+
+
+def _get_model_backend_value(model_config: object) -> str:
+    model_type = getattr(model_config, "type", None)
+    if isinstance(model_type, str):
+        return model_type
+    value = getattr(model_type, "value", None)
+    if isinstance(value, str):
+        return value
+    return "unknown"
