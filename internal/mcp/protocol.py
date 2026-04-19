@@ -229,3 +229,8 @@ class CompressionStrategyType(enum.Enum):
     SUMMARY = "summary"  # AI生成摘要
     SLIDING = "sliding"  # 滑动窗口保留最新
     EXTRACTION = "extraction"  # 抽取关键消息
+
+
+def estimate_tokens(text: str) -> int:
+    """Rough token estimator used by MCP/legacy bridge code."""
+    return len(text) // 4
