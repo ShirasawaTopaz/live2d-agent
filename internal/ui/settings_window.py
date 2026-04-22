@@ -953,6 +953,10 @@ class SettingsWindow(QWidget):
                 self.model_max_tool_retries_edit.setStyleSheet("border: 1px solid #c62828;")
             return
 
+        if field_lower.startswith("live2dexpressions"):
+            self.tabs.setCurrentIndex(0)
+            return
+
         memory_field_map = {
             "memory.max_messages": self.memory_max_messages_spin,
             "memory.max_tokens": self.memory_max_tokens_spin,

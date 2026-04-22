@@ -13,6 +13,16 @@ dist/
 venv/
 env/
 pyvenv.cfg
+.python-version
+
+# ========== Python Tooling ==========
+.nox/
+.tox/
+.hypothesis/
+.pytype/
+.direnv/
+pip-wheel-metadata/
+site/
 
 # ========== User Configuration ==========
 # User config with API keys - keep config.example.json
@@ -52,8 +62,13 @@ ai_model/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.coverage.*
 .coverage
+coverage.xml
 htmlcov/
+
+# ========== Notebook / Data Science ==========
+.ipynb_checkpoints/
 
 # ========== Tool Specific ==========
 .sisyphus/
@@ -70,4 +85,5 @@ TODO.md
 # ========== Other ==========
 # Windows accidental special file
 nul
+Thumbs.db
 data

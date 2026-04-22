@@ -12,6 +12,7 @@ from internal.config.config import AIModelType, Config
 
 KNOWN_CONFIG_KEYS = (
     "live2dSocket",
+    "live2dExpressions",
     "models",
     "memory",
     "sandbox",
@@ -106,6 +107,14 @@ def validate_config_dict(data: dict[str, Any]) -> list[ValidationError]:
         for idx, model in enumerate(models):
             errors.extend(_validate_model(model, idx))
 
+    live2d_expressions = data.get("live2dExpressions")
+    if live2d_expressions is not None and not isinstance(live2d_expressions, dict):
+        errors.append(
+            ValidationError(
+                field="live2dExpressions", message="live2dExpressions must be an object."
+            )
+        )
+
     memory = data.get("memory")
     if memory is not None and not isinstance(memory, dict):
         errors.append(ValidationError(field="memory", message="memory must be an object."))
@@ -159,7 +168,7 @@ def decide_runtime_apply(old_config: Config, new_config: Config) -> RuntimeApply
 
     non_hot_changed = any(
         old_data.get(section) != new_data.get(section)
-        for section in ("memory", "sandbox", "planning", "rag")
+        for section in ("live2dExpressions", "memory", "sandbox", "planning", "rag")
     )
     models_changed = old_data.get("models") != new_data.get("models")
     requires_restart = non_hot_changed or (models_changed and not default_model_changed)

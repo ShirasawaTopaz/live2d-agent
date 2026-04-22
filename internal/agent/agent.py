@@ -9,7 +9,7 @@ from .agent_support.online import OnlineModel
 from .agent_support.trait import ModelTrait
 from .agent_support.transformers import Transformers
 from .bubble_timing import BubbleTimingController, calculate_bubble_duration
-from .chat_service import ChatService
+from .chat_service import ChatService, Live2DConflictController, Live2DExpressionScheduler
 from .planning.base import Plan
 from .planning.planner import Planner, PlannerConfig
 from .planning.storage.json import JSONPlanStorage
@@ -43,6 +43,8 @@ class Agent:
     dynamic_tool_storage: DynamicToolStorage
     planner: Optional[Planner] = None
     rag: Optional[RAGManager] = None
+    live2d_expressions: Any | None = None
+    live2d_scheduler: Any | None = None
     _compression_task: asyncio.Task | None = None
 
     def __init__(
@@ -65,7 +67,10 @@ class Agent:
             logging.info(f"Loaded {loaded_count} dynamic tool(s) from storage")
 
         self.bubble_timing = BubbleTimingController()
-        self.chat_service = ChatService(self)
+        self.live2d_conflict = Live2DConflictController()
+        self.live2d_expressions = None
+        self.live2d_scheduler = Live2DExpressionScheduler(self.live2d_conflict)
+        self.chat_service = ChatService(self, self.live2d_conflict, self.live2d_scheduler)
         self.max_tool_calls = 5
         self.memory = MemoryManager(memory_config) if memory_config and memory_config.enabled else None
         self.rag = self._initialize_rag(rag_config)
@@ -222,7 +227,7 @@ def create_agent(
     sandbox_config: SandboxConfig | None = None,
     planning_config: PlanningConfig | None = None,
     global_config: Config | None = None,
-) -> Agent:
+    ) -> Agent:
     """根据配置创建Agent实例。"""
     rag_config = global_config.rag if global_config is not None else None
 
@@ -238,10 +243,16 @@ def create_agent(
     else:
         raise ValueError(f"Unknown model type: {model_config.type}")
 
-    return Agent(
+    agent = Agent(
         model,
         memory_config=memory_config,
         sandbox_config=sandbox_config,
         planning_config=planning_config,
         rag_config=rag_config,
     )
+    if global_config is not None:
+        agent.live2d_conflict = Live2DConflictController(global_config.live2dExpressions)
+        agent.live2d_expressions = global_config.live2dExpressions
+        agent.live2d_scheduler = Live2DExpressionScheduler(agent.live2d_conflict, global_config.live2dExpressions)
+        agent.chat_service = ChatService(agent, agent.live2d_conflict, agent.live2d_scheduler)
+    return agent

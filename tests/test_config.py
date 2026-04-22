@@ -20,6 +20,8 @@ def test_load_missing_config_file_returns_defaults(tmp_path):
 
     assert config.live2dSocket == "ws://127.0.0.1:10086/api"
     assert config.models == []
+    assert config.live2dExpressions.enabled is True
+    assert config.live2dExpressions.default_expression == "EXP_NEUTRAL_01"
     assert config.memory is not None
     assert config.sandbox is not None
 
@@ -29,6 +31,7 @@ def test_load_empty_config_file_returns_defaults(tmp_path):
 
     assert config.live2dSocket == "ws://127.0.0.1:10086/api"
     assert config.models == []
+    assert config.live2dExpressions.fallback_policy == "neutral"
 
 
 def test_load_invalid_json_raises_value_error(tmp_path):
@@ -111,6 +114,25 @@ def test_repeated_loads_do_not_accumulate_models(tmp_path):
 def test_config_to_dict_roundtrip_for_known_sections():
     config_data = {
         "live2dSocket": "ws://127.0.0.1:10086/api",
+        "live2dExpressions": {
+            "enabled": True,
+            "defaultExpression": "EXP_NEUTRAL_01",
+            "cooldownMs": 1200,
+            "enableMultiStage": True,
+            "fallbackPolicy": "neutral",
+            "stages": [
+                {
+                    "emotion": "happy",
+                    "expression": "EXP_HAPPY_01",
+                    "intensity": "low",
+                    "priority": 2,
+                    "cooldownMs": 900,
+                    "fallback": "EXP_NEUTRAL_01",
+                    "sceneTags": ["greeting", "praise"],
+                }
+            ],
+            "emotionAliases": {"joy": "happy"},
+        },
         "models": [
             {
                 "name": "model-a",
@@ -134,6 +156,9 @@ def test_config_to_dict_roundtrip_for_known_sections():
     restored = Config.from_dict(dumped)
 
     assert restored.live2dSocket == "ws://127.0.0.1:10086/api"
+    assert restored.live2dExpressions.default_expression == "EXP_NEUTRAL_01"
+    assert restored.live2dExpressions.stages[0].expression == "EXP_HAPPY_01"
+    assert restored.live2dExpressions.stages[0].scene_tags == ["greeting", "praise"]
     assert restored.get_default_model_config().name == "model-a"
     assert restored.memory.max_messages == 12
     assert restored.sandbox.approval.timeout_seconds == 45

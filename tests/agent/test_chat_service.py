@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from internal.agent.chat_service import ChatService
 from internal.agent.tool.base import Tool
+from internal.websocket.client import Client
 
 
 class DemoTool(Tool):
@@ -49,6 +50,18 @@ class FakeBubbleTiming:
 
     async def display_text(self, text, _ws, _bubble_widget, **kwargs):
         self.displayed_texts.append((text, kwargs.get("text_color", 0xFFFFFF)))
+
+
+class FakeWs(Client):
+    def __init__(self):
+        self.conn = None
+        self._session = SimpleNamespace(closed=True)
+
+    async def close(self):
+        return None
+
+    async def send(self, message: bytes):
+        return None
 
 
 class FakeModel:
@@ -107,7 +120,7 @@ async def _run_chat_service_executes_tool_calls_before_returning_content():
     )
     service = ChatService(agent)
 
-    response = await service.chat("hello", object())
+    response = await service.chat("hello", FakeWs())
 
     assert response == {"role": "assistant", "content": "final answer"}
     assert agent.model.history == [
@@ -128,7 +141,7 @@ async def _run_chat_service_fallback_tool_call_in_content_executes_tool_result_b
 
     await service.try_parse_and_send_bubble(
         '<tool_call>{"name":"demo_tool","arguments":{"value":5}}</tool_call>',
-        object(),
+        FakeWs(),
     )
 
     assert agent.bubble_timing.single_bubbles == []

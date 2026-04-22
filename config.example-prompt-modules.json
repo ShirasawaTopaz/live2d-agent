@@ -1,5 +1,27 @@
 {
     "live2dSocket": "ws://127.0.0.1:10086/api",
+    "live2dExpressions": {
+        "enabled": true,
+        "defaultExpression": "EXP_NEUTRAL_01",
+        "cooldownMs": 1200,
+        "enableMultiStage": true,
+        "fallbackPolicy": "neutral",
+        "stages": [
+            {
+                "emotion": "happy",
+                "expression": "EXP_HAPPY_01",
+                "intensity": "low",
+                "priority": 2,
+                "cooldownMs": 900,
+                "fallback": "EXP_NEUTRAL_01",
+                "sceneTags": ["greeting", "praise", "joke"]
+            }
+        ],
+        "emotionAliases": {
+            "joy": "happy",
+            "sadness": "sad"
+        }
+    },
     "models": [
         {
             "name": "agent-ollama-modular",

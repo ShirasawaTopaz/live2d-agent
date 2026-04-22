@@ -1,7 +1,7 @@
 import json
 import aiofiles
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from json import JSONDecodeError
 from typing import Any, Optional
@@ -122,12 +122,133 @@ class RAGConfig:
         }
 
 
+@dataclass
+class Live2DExpressionStageConfig:
+    emotion: str = ""
+    expression: str = ""
+    intensity: str = "low"
+    priority: int = 0
+    cooldown_ms: int | None = None
+    fallback: str | None = None
+    scene_tags: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(
+        cls,
+        data: dict[str, Any],
+        *,
+        default_expression: str,
+        inherited_cooldown_ms: int,
+    ) -> "Live2DExpressionStageConfig":
+        if not isinstance(data, dict):
+            raise ValueError("Each live2dExpressions stage must be a JSON object.")
+
+        scene_tags = data.get("sceneTags", [])
+        if not isinstance(scene_tags, list):
+            raise ValueError("live2dExpressions stage sceneTags must be a list.")
+
+        return cls(
+            emotion=data.get("emotion", ""),
+            expression=data.get("expression", default_expression),
+            intensity=data.get("intensity", "low"),
+            priority=data.get("priority", 0),
+            cooldown_ms=data.get("cooldownMs", inherited_cooldown_ms),
+            fallback=data.get("fallback", default_expression),
+            scene_tags=[tag for tag in scene_tags if isinstance(tag, str)],
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "emotion": self.emotion,
+            "expression": self.expression,
+            "intensity": self.intensity,
+            "priority": self.priority,
+            "cooldownMs": self.cooldown_ms,
+            "fallback": self.fallback,
+            "sceneTags": self.scene_tags,
+        }
+
+
+@dataclass
+class Live2DExpressionsConfig:
+    enabled: bool = True
+    default_expression: str = "EXP_NEUTRAL_01"
+    cooldown_ms: int = 1200
+    enable_multi_stage: bool = True
+    fallback_policy: str = "neutral"
+    stages: list[Live2DExpressionStageConfig] = field(default_factory=list)
+    emotion_aliases: dict[str, str] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Live2DExpressionsConfig":
+        if not isinstance(data, dict):
+            raise ValueError("live2dExpressions must be an object.")
+
+        default_expression = data.get("defaultExpression", "EXP_NEUTRAL_01")
+        cooldown_ms = data.get("cooldownMs", 1200)
+
+        stages_data = data.get("stages")
+        if stages_data is None:
+            stages = [
+                Live2DExpressionStageConfig(
+                    emotion="neutral",
+                    expression=default_expression,
+                    intensity="low",
+                    priority=0,
+                    cooldown_ms=cooldown_ms,
+                    fallback=default_expression,
+                    scene_tags=[],
+                )
+            ]
+        else:
+            if not isinstance(stages_data, list):
+                raise ValueError("live2dExpressions.stages must be a list.")
+            stages = [
+                Live2DExpressionStageConfig.from_dict(
+                    stage,
+                    default_expression=default_expression,
+                    inherited_cooldown_ms=cooldown_ms,
+                )
+                for stage in stages_data
+            ]
+
+        emotion_aliases = data.get("emotionAliases", {})
+        if not isinstance(emotion_aliases, dict):
+            raise ValueError("live2dExpressions.emotionAliases must be an object.")
+
+        return cls(
+            enabled=data.get("enabled", True),
+            default_expression=default_expression,
+            cooldown_ms=cooldown_ms,
+            enable_multi_stage=data.get("enableMultiStage", True),
+            fallback_policy=data.get("fallbackPolicy", "neutral"),
+            stages=stages,
+            emotion_aliases={
+                key: value
+                for key, value in emotion_aliases.items()
+                if isinstance(key, str) and isinstance(value, str)
+            },
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "defaultExpression": self.default_expression,
+            "cooldownMs": self.cooldown_ms,
+            "enableMultiStage": self.enable_multi_stage,
+            "fallbackPolicy": self.fallback_policy,
+            "stages": [stage.to_dict() for stage in self.stages],
+            "emotionAliases": self.emotion_aliases,
+        }
+
+
 class Config:
     DEFAULT_CONFIG_PATH = "config.json"
 
     def __init__(self) -> None:
         self.live2dSocket: str = "ws://127.0.0.1:10086/api"
         self.models: list[AIModelConfig] = []
+        self.live2dExpressions: Live2DExpressionsConfig = Live2DExpressionsConfig()
         self.memory: MemoryConfig = MemoryConfig()
         self.sandbox: SandboxConfig = SandboxConfig()
         self.planning: PlanningConfig = PlanningConfig()
@@ -168,6 +289,11 @@ class Config:
         if "live2dSocket" in data:
             self.live2dSocket = data["live2dSocket"]
 
+        if "live2dExpressions" in data and isinstance(data["live2dExpressions"], dict):
+            self.live2dExpressions = Live2DExpressionsConfig.from_dict(data["live2dExpressions"])
+        else:
+            self.live2dExpressions = Live2DExpressionsConfig()
+
         if "memory" in data and isinstance(data["memory"], dict):
             self.memory = MemoryConfig.from_dict(data["memory"])
         else:
@@ -199,6 +325,7 @@ class Config:
         return {
             "live2dSocket": self.live2dSocket,
             "models": [model.to_dict() for model in self.models],
+            "live2dExpressions": self.live2dExpressions.to_dict(),
             "memory": self.memory.to_dict(),
             "sandbox": self.sandbox.to_dict(),
             "planning": self.planning.to_dict(),
