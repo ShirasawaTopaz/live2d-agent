@@ -3,14 +3,21 @@ import json
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from internal.websocket.client import (
     Client,
     DisplayBubbleText,
     Live2dDisplayBubbleText,
+    NextExpression,
     send_message,
 )
+
+
+@dataclass(slots=True)
+class Live2dNextExpression:
+    id: int
 
 if TYPE_CHECKING:
     from internal.ui.bubble_widget import BubbleWidget
@@ -86,8 +93,12 @@ class BubbleTimingController:
         update_state: bool = True,
         clear_widget: bool = True,
         show_widget: bool = True,
+        rotate_expression: bool = True,
     ) -> int:
         display_duration = duration if duration is not None else calculate_bubble_duration(text)
+
+        if rotate_expression:
+            await self._send_next_expression(ws, bubble_id)
 
         if bubble_widget is not None:
             if clear_widget:
@@ -187,8 +198,12 @@ class BubbleTimingController:
             wait_for_interval=first_chunk,
             update_state=False,
             clear_widget=False,
+            rotate_expression=first_chunk,
         )
         logging.debug(f"Stream chunk sent: {current_content[:50]}...")
+
+    async def _send_next_expression(self, ws: Client, bubble_id: int = 0) -> None:
+        await self._sender(ws, NextExpression, NextExpression, Live2dNextExpression(bubble_id))
 
     def finish_stream(self, final_content: str, bubble_widget: BubbleWidget | None) -> None:
         final_duration = calculate_bubble_duration(final_content)

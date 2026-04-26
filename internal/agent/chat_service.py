@@ -314,20 +314,22 @@ class ChatService:
         if not self.agent.tool_registry.is_none:
             tools = self.agent.tool_registry.get_definitions()
 
+        model_message = message
         if self.agent.memory is not None and message is not None:
             await self._prepare_memory_and_history(message)
+            model_message = None
 
         self.live2d_conflict.set_time_provider(monotonic)
         self.live2d_conflict.begin_turn()
         need_stream = self._should_stream(message, tools)
         if need_stream:
-            stream_result = await self._stream_chat(message, tools, ws)
+            stream_result = await self._stream_chat(model_message, tools, ws)
             if stream_result[2]:
                 return stream_result[0]
             response_message = stream_result[0]
             content_already_sent = stream_result[1]
         else:
-            response_message = await self.agent.model.chat(message=message, tools=tools)
+            response_message = await self.agent.model.chat(message=model_message, tools=tools)
             logging.debug(f"Model response: {response_message}")
             content_already_sent = False
 

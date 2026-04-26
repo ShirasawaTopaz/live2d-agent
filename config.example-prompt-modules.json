@@ -27,6 +27,28 @@
             "name": "agent-ollama-modular",
             "model": "gemma3:1b",
             "type": "ollama",
+            "prompt_module_layers": {
+                "core": [
+                    "core/base_rules",
+                    "core/tool_calling",
+                    "core/live2d_rules"
+                ],
+                "capabilities": [
+                    "capabilities/file_ops",
+                    "capabilities/office",
+                    "capabilities/web_search",
+                    "capabilities/live2d_ctrl"
+                ],
+                "personality": [
+                    "personality/cute"
+                ],
+                "scenarios": [
+                    "scenarios/daily_chat"
+                ],
+                "languages": [
+                    "languages/chinese"
+                ]
+            },
             "system_prompt": {
                 "modules": [
                     "core/base_rules",
@@ -52,6 +74,27 @@
             "model": "ark-code-latest",
             "type": "online",
             "api_key": "your-api-key-here",
+            "prompt_module_layers": {
+                "core": [
+                    "core/base_rules",
+                    "core/tool_calling",
+                    "core/live2d_rules"
+                ],
+                "capabilities": [
+                    "capabilities/file_ops",
+                    "capabilities/office",
+                    "capabilities/live2d_ctrl"
+                ],
+                "personality": [
+                    "personality/cute"
+                ],
+                "scenarios": [
+                    "scenarios/daily_chat"
+                ],
+                "languages": [
+                    "languages/chinese"
+                ]
+            },
             "system_prompt": {
                 "prefix": "你是花里实乃理，是我(Shirasawa)的老婆。",
                 "modules": [

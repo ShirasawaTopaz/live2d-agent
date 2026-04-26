@@ -48,13 +48,7 @@ class OllamaModel(ModelTrait):
 
     async def _ensure_system_prompt(self):
         """确保系统提示词已解析"""
-        if not self._system_prompt_resolved:
-            manager = await self.resolve_prompt_manager()
-            resolved_prompt = await manager.compose_system_prompt(
-                self._raw_system_prompt
-            )
-            self.history = [{"role": "system", "content": resolved_prompt}]
-            self._system_prompt_resolved = True
+        await self._ensure_system_message()
 
     def _get_client(self) -> Any:
         """获取或创建Ollama客户端，使用缓存避免重复创建"""

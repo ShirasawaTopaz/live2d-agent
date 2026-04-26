@@ -99,6 +99,27 @@ class FakeAgent:
         return None
 
 
+class FakeMemory:
+    def __init__(self, messages):
+        self._initialized = True
+        self.messages = list(messages)
+        self.added_messages = []
+        self.saved = False
+
+    def add_message(self, message):
+        self.added_messages.append(message)
+        self.messages.append(message)
+
+    async def get_current_messages(self):
+        return self.messages.copy()
+
+    def should_compress(self):
+        return False
+
+    async def save_current(self):
+        self.saved = True
+
+
 async def _run_chat_service_executes_tool_calls_before_returning_content():
     agent = FakeAgent(
         [
@@ -150,3 +171,24 @@ async def _run_chat_service_fallback_tool_call_in_content_executes_tool_result_b
 
 def test_chat_service_fallback_tool_call_in_content_executes_tool_result_bubble():
     asyncio.run(_run_chat_service_fallback_tool_call_in_content_executes_tool_result_bubble())
+
+
+async def _run_chat_service_with_memory_keeps_system_and_does_not_duplicate_long_input():
+    agent = FakeAgent([{"role": "assistant", "content": "final answer"}])
+    long_input = "长" * 2000
+    agent.memory = FakeMemory([{"role": "system", "content": "persona prefix"}])
+    service = ChatService(agent)
+
+    response = await service.chat(long_input, FakeWs())
+
+    assert response == {"role": "assistant", "content": "final answer"}
+    assert agent.model.calls[0][0] is None
+    assert agent.model.history == [
+        {"role": "system", "content": "persona prefix"},
+        {"role": "user", "content": long_input},
+    ]
+    assert [msg["role"] for msg in agent.memory.added_messages] == ["user", "assistant"]
+
+
+def test_chat_service_with_memory_keeps_system_and_does_not_duplicate_long_input():
+    asyncio.run(_run_chat_service_with_memory_keeps_system_and_does_not_duplicate_long_input())

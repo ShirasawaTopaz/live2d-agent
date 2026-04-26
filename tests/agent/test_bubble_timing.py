@@ -39,8 +39,11 @@ async def _run_send_single_bubble_parses_json_and_updates_state():
         None,
     )
 
-    assert len(sent_payloads) == 1
-    payload = sent_payloads[0]
+    assert len(sent_payloads) == 2
+    expression_payload = sent_payloads[0]
+    assert expression_payload.id == 7
+
+    payload = sent_payloads[1]
     assert payload.id == 7
     assert payload.text == "Hello world"
     assert payload.textColor == 12345
@@ -51,3 +54,36 @@ async def _run_send_single_bubble_parses_json_and_updates_state():
 
 def test_send_single_bubble_parses_json_and_updates_state():
     asyncio.run(_run_send_single_bubble_parses_json_and_updates_state())
+
+
+async def _run_send_stream_chunk_rotates_expression_once_per_bubble():
+    sent_payloads = []
+
+    async def fake_sender(_ws, _msg, _msg_id, data):
+        sent_payloads.append(data)
+
+    controller = BubbleTimingController(sender=fake_sender)
+
+    await controller.send_stream_chunk(
+        "Hello",
+        5000,
+        object(),
+        None,
+        first_chunk=True,
+    )
+    await controller.send_stream_chunk(
+        "Hello world",
+        5000,
+        object(),
+        None,
+        first_chunk=False,
+    )
+
+    assert len(sent_payloads) == 3
+    assert sent_payloads[0].id == 0
+    assert sent_payloads[1].text == "Hello"
+    assert sent_payloads[2].text == "Hello world"
+
+
+def test_send_stream_chunk_rotates_expression_once_per_bubble():
+    asyncio.run(_run_send_stream_chunk_rotates_expression_once_per_bubble())

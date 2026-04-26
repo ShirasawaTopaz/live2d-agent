@@ -65,10 +65,9 @@ class PromptManager:
 
         if isinstance(prompt_config, dict):
             parts: List[str] = []
-
-            # 添加前缀
-            if "prefix" in prompt_config and prompt_config["prefix"]:
-                parts.append(str(prompt_config["prefix"]).strip())
+            prefix = str(prompt_config["prefix"]).strip() if prompt_config.get("prefix") else ""
+            if prefix:
+                parts.append(prefix)
 
             # 加载并组合模块
             if "modules" in prompt_config and isinstance(

@@ -1,11 +1,18 @@
 import time
 import asyncio
+from dataclasses import dataclass
 from internal.agent.tool.base import Tool
 from internal.websocket.client import (
     DisplayBubbleText,
     Live2dDisplayBubbleText,
+    NextExpression,
     send_message,
 )
+
+
+@dataclass(slots=True)
+class Live2dNextExpression:
+    id: int
 
 
 class DisplayBubbleTextTool(Tool):
@@ -134,6 +141,15 @@ class DisplayBubbleTextTool(Tool):
         if duration is None:
             duration = self.calculate_bubble_duration(text)
 
+        ws = kwargs.get("ws")
+        if ws is not None:
+            await send_message(
+                ws,
+                NextExpression,
+                NextExpression,
+                Live2dNextExpression(kwargs.get("id", 0)),
+            )
+
         # 获取 Qt 气泡组件，如果存在则使用 Qt 气泡显示
         bubble_widget = kwargs.get("bubble_widget")
         if bubble_widget is not None:
@@ -158,7 +174,6 @@ class DisplayBubbleTextTool(Tool):
         )
 
         # 检查ws不为空
-        ws = kwargs.get("ws")
         if ws is None:
             return
 

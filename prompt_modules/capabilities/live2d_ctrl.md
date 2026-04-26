@@ -32,5 +32,5 @@
 
 - 气泡文本工具只在需要对话时使用
 - 表情和动作修改后不需要任何确认信息
-- 动作完成后直接结束回复
+- 一旦调用 set_expression、next_expression、clear_expression 或 trigger_motion，立即结束回复，不要再输出任何文本
 - 不要过度使用表情和动作修改

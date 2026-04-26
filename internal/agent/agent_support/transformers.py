@@ -100,13 +100,7 @@ class Transformers(ModelTrait):
 
     async def _ensure_system_prompt(self):
         """确保系统提示词已解析"""
-        if not self._system_prompt_resolved:
-            manager = await self.resolve_prompt_manager()
-            resolved_prompt = await manager.compose_system_prompt(
-                self._raw_system_prompt
-            )
-            self.history = [{"role": "system", "content": resolved_prompt}]
-            self._system_prompt_resolved = True
+        await self._ensure_system_message()
 
     async def _load_model(self) -> tuple[Any, Any]:
         """加载模型和分词器，使用缓存避免重复加载"""

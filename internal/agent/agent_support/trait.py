@@ -30,6 +30,23 @@ class ModelTrait(ABC):
         manager = await self.resolve_prompt_manager()
         return await manager.compose_system_prompt(self.config.system_prompt)
 
+    async def _ensure_system_message(self) -> None:
+        resolved_prompt = getattr(self, "_resolved_system_prompt", None)
+        if not getattr(self, "_system_prompt_resolved", False) or not isinstance(
+            resolved_prompt, str
+        ):
+            resolved_prompt = await self._resolve_system_prompt()
+            setattr(self, "_resolved_system_prompt", resolved_prompt)
+            setattr(self, "_system_prompt_resolved", True)
+
+        if self.history and self.history[0].get("role") == "system":
+            content = str(self.history[0].get("content", ""))
+            if resolved_prompt and not content.startswith(resolved_prompt):
+                separator = "\n\n" if content else ""
+                self.history[0]["content"] = f"{resolved_prompt}{separator}{content}"
+            return
+        self.history.insert(0, {"role": "system", "content": resolved_prompt})
+
     @abstractmethod
     async def chat(self, message: Any, tools: list[dict] | None = None) -> dict:
         """发送聊天消息并获取完整响应"""
