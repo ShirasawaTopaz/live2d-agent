@@ -6,6 +6,8 @@ from internal.websocket.client import (
     DisplayBubbleText,
     Live2dDisplayBubbleText,
     NextExpression,
+    SetExpression,
+    Live2dSetExpression,
     send_message,
 )
 
@@ -19,6 +21,34 @@ class DisplayBubbleTextTool(Tool):
     # 气泡显示时间管理
     _last_bubble_time: float = 0.0  # 最后一次气泡显示开始时间
     _last_bubble_duration: float = 0.0  # 最后一次气泡显示时长（秒）
+
+    def __init__(self, expression_count: int | None = None) -> None:
+        # Bubble display also rotates expressions, so keep the same deterministic
+        # client-side cursor used by the next_expression tool.
+        self._expression_count = expression_count if expression_count is not None and expression_count > 0 else None
+        self._next_expression_id = 0
+
+    def set_expression_count(self, expression_count: int | None) -> None:
+        # Preserve the current cursor while keeping it valid after config reloads.
+        self._expression_count = expression_count if expression_count is not None and expression_count > 0 else None
+        if self._expression_count is not None:
+            self._next_expression_id %= self._expression_count
+
+    async def _send_next_expression(self, ws, model_id: int) -> None:
+        if self._expression_count is not None:
+            # Send an explicit SetExpression so two-expression models wrap as
+            # 0, 1, 0, 1... instead of getting stuck on the second expression.
+            expression_id = self._next_expression_id % self._expression_count
+            self._next_expression_id = (expression_id + 1) % self._expression_count
+            await send_message(
+                ws,
+                SetExpression,
+                SetExpression,
+                Live2dSetExpression(id=model_id, expId=expression_id),
+            )
+            return
+
+        await send_message(ws, NextExpression, NextExpression, Live2dNextExpression(model_id))
 
     @staticmethod
     def calculate_bubble_duration(text: str) -> int:
@@ -143,12 +173,7 @@ class DisplayBubbleTextTool(Tool):
 
         ws = kwargs.get("ws")
         if ws is not None:
-            await send_message(
-                ws,
-                NextExpression,
-                NextExpression,
-                Live2dNextExpression(kwargs.get("id", 0)),
-            )
+            await self._send_next_expression(ws, kwargs.get("id", 0))
 
         # 获取 Qt 气泡组件，如果存在则使用 Qt 气泡显示
         bubble_widget = kwargs.get("bubble_widget")

@@ -89,6 +89,16 @@ class Agent:
     def _register_default_tools(self) -> None:
         register_default_tools(self.tool_registry, self.sandbox, self.dynamic_tool_storage)
 
+    def configure_live2d_expression_tools(self, expressions_config: Any | None) -> None:
+        # Inject configured stage count so Live2D tools can wrap expression rotation locally.
+        stages = getattr(expressions_config, "stages", []) if expressions_config is not None else []
+        expression_count = len(stages) if isinstance(stages, list) else None
+        for tool_name in ("next_expression", "display_bubble_text"):
+            tool = self.tool_registry.tools.get(tool_name)
+            if tool is not None and hasattr(tool, "set_expression_count"):
+                tool.set_expression_count(expression_count)
+
+
     def _should_skip_content(self, content: str) -> bool:
         return self.bubble_timing.should_skip_content(content)
 
@@ -253,6 +263,7 @@ def create_agent(
     if global_config is not None:
         agent.live2d_conflict = Live2DConflictController(global_config.live2dExpressions)
         agent.live2d_expressions = global_config.live2dExpressions
+        agent.configure_live2d_expression_tools(global_config.live2dExpressions)
         agent.live2d_scheduler = Live2DExpressionScheduler(agent.live2d_conflict, global_config.live2dExpressions)
         agent.chat_service = ChatService(agent, agent.live2d_conflict, agent.live2d_scheduler)
     return agent
