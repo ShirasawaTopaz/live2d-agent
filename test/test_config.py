@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from internal.config.config import AIModelConfig, AIModelType, Config
+from internal.config.config import AIModelConfig, AIModelType, Config, parse_config_content
 
 
 def load_config(
@@ -32,6 +32,13 @@ def test_load_empty_config_file_returns_defaults(tmp_path):
     assert config.live2dSocket == "ws://127.0.0.1:10086/api"
     assert config.models == []
     assert config.live2dExpressions.fallback_policy == "neutral"
+
+
+def test_parse_config_content_returns_defaults_for_blank_content():
+    raw, config = parse_config_content("config.json", "   \n")
+
+    assert raw == {}
+    assert config.models == []
 
 
 def test_load_invalid_json_raises_value_error(tmp_path):

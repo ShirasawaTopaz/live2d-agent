@@ -8,7 +8,7 @@ repos:
         pass_filenames: false
       - id: ruff-scope-check
         name: ruff scoped check
-        entry: poetry run ruff check __main__.py build.py internal/config internal/prompt_manager internal/websocket tests
+        entry: poetry run ruff check __main__.py build.py internal/config internal/prompt_manager internal/websocket test
         language: system
         pass_filenames: false
       - id: mypy-scope-check

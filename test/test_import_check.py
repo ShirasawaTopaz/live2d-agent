@@ -10,7 +10,7 @@ print("Testing imports...")
 # Check that all modified modules can be imported
 try:
     from internal.memory.storage._json import JSONStorage
-    print("✓ internal.memory.storage._json imported successfully")
+    print(f"✓ internal.memory.storage._json imported successfully ({JSONStorage.__name__})")
 except Exception as e:
     print(f"✗ import _json failed: {e}")
     import traceback
@@ -18,7 +18,7 @@ except Exception as e:
 
 try:
     from internal.memory.storage._sqlite import SQLiteStorage
-    print("✓ internal.memory.storage._sqlite imported successfully")
+    print(f"✓ internal.memory.storage._sqlite imported successfully ({SQLiteStorage.__name__})")
 except Exception as e:
     print(f"✗ import _sqlite failed: {e}")
     import traceback
@@ -26,7 +26,10 @@ except Exception as e:
 
 try:
     from internal.mcp.backend import JSONFileBackend, SQLiteBackend
-    print("✓ internal.mcp.backend imported successfully (JSONFileBackend, SQLiteBackend)")
+    print(
+        "✓ internal.mcp.backend imported successfully "
+        f"({JSONFileBackend.__name__}, {SQLiteBackend.__name__})"
+    )
 except Exception as e:
     print(f"✗ import mcp.backend failed: {e}")
     import traceback
@@ -34,7 +37,7 @@ except Exception as e:
 
 try:
     import aiofiles
-    print(f"✓ aiofiles version: {aiofiles.__version__}")
+    print(f"✓ aiofiles version: {getattr(aiofiles, '__version__', 'unknown')}")
 except Exception as e:
     print(f"✗ import aiofiles failed: {e}")
 

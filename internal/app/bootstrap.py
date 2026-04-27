@@ -27,22 +27,11 @@ class BootstrapContext:
 async def bootstrap_application() -> BootstrapContext:
     """Create config, websocket, agent, and UI components."""
     logger.info("正在初始化 Live2oder...")
-    config = await Config.load()
-    await PromptManager.load()
-
-    qt_widgets = import_module("PySide6.QtWidgets")
-    qt_app = qt_widgets.QApplication(sys.argv)
-    qt_app.setQuitOnLastWindowClosed(False)
-    qt_app.setStyle("Fusion")
-    qt_app.setApplicationName("Live2oder")
-    qt_app.setApplicationDisplayName("Live2oder Agent")
-
-    websocket = await create_websocket(config)
+    config = await load_startup_resources()
+    qt_app = create_qt_application()
     agent = create_runtime_agent(config)
-    input_box = FloatingInputBox(agent=agent, title="Agent Chat")
-    bubble_widget = BubbleWidget()
-    bubble_widget.set_theme(str(input_box._theme))
-    agent.bubble_widget = bubble_widget
+    websocket = await create_websocket(config)
+    input_box, bubble_widget = create_ui_components(agent)
 
     logger.info("Live2oder 初始化完成")
     return BootstrapContext(
@@ -53,6 +42,47 @@ async def bootstrap_application() -> BootstrapContext:
         input_box=input_box,
         bubble_widget=bubble_widget,
     )
+
+
+async def load_startup_resources() -> Config:
+    config = await Config.load()
+    await PromptManager.load()
+    return config
+
+
+def create_qt_application() -> Any:
+    qt_widgets = import_module("PySide6.QtWidgets")
+    qt_app = qt_widgets.QApplication(sys.argv)
+    qt_app.setQuitOnLastWindowClosed(False)
+    qt_app.setStyle("Fusion")
+    qt_app.setApplicationName("Live2oder")
+    qt_app.setApplicationDisplayName("Live2oder Agent")
+    return qt_app
+
+
+def create_ui_components(agent: Any) -> tuple[FloatingInputBox, BubbleWidget]:
+    input_box = FloatingInputBox(agent=agent, title="Agent Chat")
+    bubble_widget = BubbleWidget()
+    bubble_widget.set_theme(str(input_box._theme))
+    agent.bubble_widget = bubble_widget
+    return input_box, bubble_widget
+
+
+def configure_websocket_callbacks(
+    websocket: ReconnectingWebSocket,
+    config: Config,
+) -> None:
+    async def on_connect(_client) -> None:
+        logger.info("WebSocket 已连接到 %s", config.live2dSocket)
+
+    async def on_disconnect(error: Exception | None) -> None:
+        if error:
+            logger.warning("WebSocket 断开连接: %s", error)
+        else:
+            logger.info("WebSocket 正常断开")
+
+    websocket.on_connect = on_connect
+    websocket.on_disconnect = on_disconnect
 
 
 async def create_websocket(config: Config) -> ReconnectingWebSocket:
@@ -68,17 +98,7 @@ async def create_websocket(config: Config) -> ReconnectingWebSocket:
         max_reconnect_attempts=0,
     )
 
-    async def on_connect(_client) -> None:
-        logger.info("WebSocket 已连接到 %s", config.live2dSocket)
-
-    async def on_disconnect(error: Exception | None) -> None:
-        if error:
-            logger.warning("WebSocket 断开连接: %s", error)
-        else:
-            logger.info("WebSocket 正常断开")
-
-    websocket.on_connect = on_connect
-    websocket.on_disconnect = on_disconnect
+    configure_websocket_callbacks(websocket, config)
     await websocket.connect()
     return websocket
 

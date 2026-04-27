@@ -12,14 +12,30 @@ import sys
 from dataclasses import dataclass
 from importlib.util import find_spec
 from pathlib import Path
+import tomllib
 
-PROJECT_NAME = "live2d-agent"
-VERSION = "0.1.0"
 SPEC_FILE = Path("live2d-agent.spec")
 DIST_ROOT = Path("dist")
 BUILD_ROOT = Path("build")
-OUTPUT_DIR = DIST_ROOT / f"{PROJECT_NAME}-{VERSION}"
 PYINSTALLER_DIST_DIR = DIST_ROOT
+
+
+def load_project_metadata() -> tuple[str, str]:
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    project = pyproject.get("project")
+    if not isinstance(project, dict):
+        raise RuntimeError("pyproject.toml is missing the [project] table")
+
+    name = project.get("name")
+    version = project.get("version")
+    if not isinstance(name, str) or not isinstance(version, str):
+        raise RuntimeError("pyproject.toml must define project.name and project.version")
+
+    return name, version
+
+
+PROJECT_NAME, VERSION = load_project_metadata()
+OUTPUT_DIR = DIST_ROOT / f"{PROJECT_NAME}-{VERSION}"
 
 
 @dataclass(frozen=True)

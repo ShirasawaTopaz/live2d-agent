@@ -136,7 +136,7 @@ live2d-agent/
 ├── prompt_modules/       # Modular prompt components (loaded at runtime)
 ├── resources/            # Static resources (icons, images)
 ├── skills/               # User-added skills (dynamically loaded)
-└── tests/                # Test files
+└── test/                 # Test files
 ```
 
 ### Key Files
@@ -159,12 +159,11 @@ Live2oder already has a growing pytest-based test suite plus scoped local qualit
 
 ### Current Testing and Quality Commands
 
-The main local commands are:
+The canonical local quality gates match CI and pre-commit:
 
  - `poetry run pytest --collect-only`
- - `poetry run pytest tests -q`
- - `poetry run ruff check __main__.py build.py internal/ internal/agent internal/config internal/memory internal/mcp internal/prompt_manager internal/skill internal/ui internal/websocket tests`
- - `poetry run mypy __main__.py build.py internal/agent internal/config internal/memory internal/mcp internal/prompt_manager internal/websocket`
+- `poetry run ruff check __main__.py build.py internal/config internal/prompt_manager internal/websocket test`
+ - `poetry run mypy __main__.py internal/config internal/prompt_manager internal/websocket`
  - `poetry run pre-commit run --all-files`
 
 ### How to Run Tests
@@ -176,7 +175,7 @@ Run tests with commands like:
 poetry run pytest -v
 
 # Run a specific test file
-poetry run pytest tests/test_config.py -v
+poetry run pytest test/test_config.py -v
 
 ```
 
@@ -190,10 +189,10 @@ Ruff is a fast Python linter that enforces code style and catches common errors.
 
 ```bash
 # Run the scoped lint check used by the repository quality gates
-poetry run ruff check __main__.py build.py internal/ internal/agent internal/config internal/memory internal/mcp internal/prompt_manager internal/skill internal/ui internal/websocket tests
+poetry run ruff check __main__.py build.py internal/ internal/agent internal/config internal/memory internal/mcp internal/prompt_manager internal/skill internal/ui internal/websocket test
 
 # Fix fixable issues automatically in the same scoped paths
-poetry run ruff check --fix __main__.py build.py internal/ internal/agent internal/config internal/memory internal/mcp internal/prompt_manager internal/skill internal/ui internal/websocket tests
+poetry run ruff check --fix __main__.py build.py internal/ internal/agent internal/config internal/memory internal/mcp internal/prompt_manager internal/skill internal/ui internal/websocket test
 ```
 
 #### mypy Type Checking
@@ -216,13 +215,13 @@ When adding new code to Live2oder, please follow these guidelines:
 5. **Mock external dependencies** - Mock out AI model APIs and WebSocket connections to keep tests self-contained
 6. **One assertion per test** - Focus each test on testing one specific behavior for easier debugging
 
-Test files should be placed in the `tests/` directory with the naming pattern `test_<module_name>.py`.
+Test files should be placed in the `test/` directory with the naming pattern `test_<module_name>.py`.
 
 ### CI/CD with GitHub Actions
 
 The repository includes a GitHub Actions workflow that mirrors the scoped local gates. The CI checks:
 
-- All tests pass with pytest
+- pytest collection succeeds
 - Ruff linting passes with no errors
 - mypy type checking passes with no errors
 
@@ -240,12 +239,11 @@ poetry run pre-commit install
 poetry run pre-commit run --all-files
 ```
 
-The pre-commit configuration includes:
+The pre-commit configuration includes the same quality gates used in CI:
 
+- pytest collection
 - Ruff linting
-- Trailing whitespace removal
-- End-of-file fixing
-- mypy type checking (optional)
+- mypy type checking
 
 For more information about contributing to Live2oder, see the roadmap in `TODO.md`.
 

@@ -3,6 +3,7 @@ from internal.config.editor import (
     decide_runtime_apply,
     merge_known_fields,
     normalize_models_default,
+    load_with_raw,
     validate_config_dict,
 )
 
@@ -105,6 +106,20 @@ def test_validate_config_dict_rejects_invalid_memory_mcp_values():
     assert "memory.compression_strategy" in fields
     assert "memory.max_working_messages" in fields
     assert "memory.remote.timeout" in fields
+
+
+def test_load_with_raw_returns_raw_and_config(tmp_path):
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        "{\n  \"live2dSocket\": \"ws://example\",\n  \"models\": []\n}",
+        encoding="utf-8",
+    )
+
+    raw, config = load_with_raw(str(config_path))
+
+    assert raw["live2dSocket"] == "ws://example"
+    assert raw["models"] == []
+    assert config.live2dSocket == "ws://example"
 
 
 def test_decide_runtime_apply_detects_socket_and_default_model_change():

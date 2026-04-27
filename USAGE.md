@@ -1507,7 +1507,7 @@ This section covers common problems you might encounter when running Live2oder, 
 
 #### 10. Build fails with PyInstaller
 
-**Symptom**: Running python build.py fails before completing the build.
+**Symptom**: Running `poetry run python build.py` fails before completing the build.
 
 **Solution**:
 1. Verify PyInstaller is up to date. Update with pip install -U pyinstaller.

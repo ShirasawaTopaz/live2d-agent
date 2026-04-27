@@ -26,4 +26,4 @@ Core application modules - app bootstrap, agent core, config, memory, MCP, RAG, 
 
 ## ANTI-PATTERNS
 - No direct `config.json` reads by agent tools - sandbox blocks it
-- `tests/` has its own AGENTS.md (separate domain)
+- `test/` has its own AGENTS.md (separate domain)

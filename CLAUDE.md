@@ -15,13 +15,13 @@ cp config.example.json config.json
 # Edit config.json with your settings
 
 # Run the application
-python __main__.py
+poetry run python __main__.py
 ```
 
 ### Building for Distribution
 ```bash
 # Build executable using PyInstaller
-python build.py
+poetry run python build.py
 ```
 
 ### Configuration

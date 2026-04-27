@@ -17,7 +17,7 @@ Python desktop AI Agent with PySide6 UI, WebSocket Live2D integration, extensibl
 | UI | `internal/ui/` | Qt widgets, input, bubble |
 | Skills | `internal/skill/` | Registry, manager, dynamic loader |
 | RAG | `internal/rag/` | Embeddings, index, document |
-| Tests | `tests/` | Domain-matched subpackages |
+| Tests | `test/` | Domain-matched subpackages |
 
 ## STRUCTURE
 ```
@@ -35,7 +35,7 @@ live2oder/
 │   ├── skill/            # Registry, manager, dynamic loader
 │   ├── ui/              # Qt widgets
 │   └── websocket/        # Client, reconnect
-├── tests/                # Domain-matched test packages
+├── test/                 # Domain-matched test packages
 ├── prompt_modules/       # Prompt templates
 └── skills/              # Hot-reloadable skills
 ```
@@ -47,10 +47,10 @@ live2oder/
 - The app expects a Live2D WebSocket service at `config.live2dSocket` before normal chat flow works.
 
 ## Verification
-- Match CI/pre-commit order when validating changes: `poetry run pytest --collect-only`, then `poetry run ruff check __main__.py build.py internal/config internal/prompt_manager internal/websocket tests`, then `poetry run mypy __main__.py internal/config internal/prompt_manager internal/websocket`, then `poetry run pre-commit run --all-files`.
-- `pytest.ini` ignores `tests/planning/test_integration.py` by default. Ruff also excludes `tests/agent/test_tool_call_parser.py`, `tests/agent/test_transformers_quantization.py`, and `tests/planning/test_integration.py`. Mypy excludes `tests/planning/test_integration.py` and ignores errors in `internal.websocket.client`.
-- Async tests do not require `@pytest.mark.asyncio`; `tests/conftest.py` runs coroutine tests in a fresh event loop via a custom hook.
-- For a focused check, use normal pytest node selection, for example `poetry run pytest tests/test_config.py` or `poetry run pytest tests/agent/test_tool_setup.py -q`.
+- Match CI/pre-commit order when validating changes: `poetry run pytest --collect-only`, then `poetry run ruff check __main__.py build.py internal/config internal/prompt_manager internal/websocket test`, then `poetry run mypy __main__.py internal/config internal/prompt_manager internal/websocket`, then `poetry run pre-commit run --all-files`.
+- `pytest.ini` ignores `test/planning/test_integration.py` by default. Ruff also excludes `test/agent/test_tool_call_parser.py`, `test/agent/test_transformers_quantization.py`, and `test/planning/test_integration.py`. Mypy excludes `test/planning/test_integration.py` and ignores errors in `internal.websocket.client`.
+- Async tests do not require `@pytest.mark.asyncio`; `test/conftest.py` runs coroutine tests in a fresh event loop via a custom hook.
+- For a focused check, use normal pytest node selection, for example `poetry run pytest test/test_config.py` or `poetry run pytest test/agent/test_tool_setup.py -q`.
 
 ## Architecture
 - App startup path is `__main__.py -> internal.app.live2d_agent_app.Live2DAgentApp -> internal.app.bootstrap.bootstrap_application()`.
@@ -70,11 +70,11 @@ live2oder/
 ## CONVENTIONS
 - Python: `>=3.14,<3.15` exactly
 - Poetry-driven CI: `poetry install --with dev`, `poetry run ...`
-- Test discovery: `tests/` only, files named `test_*.py`
-- Domain-matched test subpackages: `tests/agent/`, `tests/planning/`, `tests/rag/`, `tests/dynamic_tool/`, etc.
+- Test discovery: `test/` only, files named `test_*.py`
+- Domain-matched test subpackages: `test/agent/`, `test/planning/`, `test/rag/`, `test/dynamic_tool/`, etc.
 - Prompt modules: Chinese primary language, modular structure in `prompt_modules/`
 
 ## ANTI-PATTERNS (THIS PROJECT)
 - No `[project.scripts]` console entry in `pyproject.toml` - use `poetry run python __main__.py` explicitly
-- `tests/planning/test_integration.py` excluded from default pytest runs (intentionally skipped)
+- `test/planning/test_integration.py` excluded from default pytest runs (intentionally skipped)
 - Prompt module inconsistencies: English mixed in `prompt_modules/core/tool_calling.md` and capability modules

@@ -27,10 +27,12 @@ def reset_prompt_manager_state():
     PromptManager._instance = None
     PromptManager._modules = {}
     ModelTrait._prompt_manager = None
+    OllamaModel._prompt_manager = None
     yield
     PromptManager._instance = None
     PromptManager._modules = {}
     ModelTrait._prompt_manager = None
+    OllamaModel._prompt_manager = None
 
 
 def _write_prompt_tree(tmp_path: Path) -> Path:
@@ -113,6 +115,7 @@ async def test_render_module_substitutes_placeholders_and_missing_module_returns
 async def test_ollama_model_resolves_composed_system_prompt_into_history(tmp_path):
     manager = await PromptManager.load(_write_prompt_tree(tmp_path))
     ModelTrait._prompt_manager = manager
+    OllamaModel._prompt_manager = manager
 
     config = Config.from_dict(
         {
@@ -158,6 +161,7 @@ async def test_ollama_model_resolves_composed_system_prompt_into_history(tmp_pat
 async def test_ollama_model_prepends_system_prompt_to_existing_long_history(tmp_path):
     manager = await PromptManager.load(_write_prompt_tree(tmp_path))
     ModelTrait._prompt_manager = manager
+    OllamaModel._prompt_manager = manager
 
     config = Config.from_dict(
         {
@@ -198,6 +202,7 @@ async def test_ollama_model_prepends_system_prompt_to_existing_long_history(tmp_
 async def test_ollama_model_merges_prompt_before_existing_system_context(tmp_path):
     manager = await PromptManager.load(_write_prompt_tree(tmp_path))
     ModelTrait._prompt_manager = manager
+    OllamaModel._prompt_manager = manager
 
     config = Config.from_dict(
         {

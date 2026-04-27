@@ -3,12 +3,11 @@ from __future__ import annotations
 import copy
 import json
 from dataclasses import dataclass
-from json import JSONDecodeError
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
 
-from internal.config.config import AIModelType, Config
+from internal.config.config import AIModelType, Config, parse_config_content
 
 KNOWN_CONFIG_KEYS = (
     "live2dSocket",
@@ -40,20 +39,7 @@ def load_with_raw(config_path: str) -> tuple[dict[str, Any], Config]:
         return {}, Config()
 
     content = path.read_text(encoding="utf-8")
-    if not content.strip():
-        return {}, Config()
-
-    try:
-        json_data = json.loads(content)
-    except JSONDecodeError as exc:
-        raise ValueError(f"Invalid JSON in config file '{config_path}': {exc.msg}") from exc
-
-    if not isinstance(json_data, dict):
-        raise ValueError(
-            f"Config file '{config_path}' must contain a JSON object at the top level."
-        )
-
-    return json_data, Config.from_dict(json_data)
+    return parse_config_content(config_path, content)
 
 
 def merge_known_fields(raw_dict: dict[str, Any], edited_dict: dict[str, Any]) -> dict[str, Any]:

@@ -6,7 +6,6 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from internal.agent.response import ToolCallParser
-import json
 
 # 模拟 Ollama 返回的对象结构
 class Function:
@@ -42,12 +41,12 @@ print(f"   has tool_calls: {hasattr(response, 'tool_calls')}")
 print(f"   tool_calls 数量: {len(response.tool_calls)}")
 
 tc = response.tool_calls[0]
-print(f"\n   第一个 tool_call:")
+print("\n   第一个 tool_call:")
 print(f"     类型: {type(tc)}")
 print(f"     has function: {hasattr(tc, 'function')}")
 
 f = tc.function
-print(f"\n   function 对象:")
+print("\n   function 对象:")
 print(f"     类型: {type(f)}")
 print(f"     has name: {hasattr(f, 'name')}")
 print(f"     name: {f.name}")
@@ -67,11 +66,12 @@ except Exception as e:
 
 print("\n" + "="*60)
 print("3. 测试 ToolCallParser.parse_tool_calls:")
+parsed = None
 try:
     parsed = ToolCallParser.parse_tool_calls(response)
     print(f"   结果: {parsed}")
     if parsed:
-        print(f"\n   解析成功！")
+        print("\n   解析成功！")
         for tc in parsed:
             print(f"   - id: {tc.get('id')}")
             print(f"   - type: {tc.get('type')}")

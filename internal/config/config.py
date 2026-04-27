@@ -20,7 +20,7 @@ class AIModelType(Enum):
 class AIModelConfig:
     name: str  # 随便给个不重复的名字就可以了
     model: str
-    system_prompt: str | dict  # 支持字符串或模块配置
+    system_prompt: str | dict[str, Any]  # 支持字符串或模块配置
     type: AIModelType
     default: bool
     config: Any
@@ -71,7 +71,7 @@ class PlanningConfig:
     auto_save: bool = True
 
     @classmethod
-    def from_dict(cls, data: dict) -> "PlanningConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "PlanningConfig":
         return cls(
             enabled=data.get("enabled", False),
             storage_type=data.get("storage_type", "json"),
@@ -103,7 +103,7 @@ class RAGConfig:
     top_k: int = 3
 
     @classmethod
-    def from_dict(cls, data: dict) -> "RAGConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "RAGConfig":
         return cls(
             enabled=data.get("enabled", False),
             document_dir=data.get("document_dir", ""),
@@ -256,28 +256,8 @@ class Config:
 
     @staticmethod
     async def load(config_path: str = DEFAULT_CONFIG_PATH) -> "Config":
-        try:
-            async with aiofiles.open(config_path, encoding="utf-8") as file:
-                data = await file.read()
-        except FileNotFoundError:
-            return Config()
-
-        if not data.strip():
-            return Config()
-
-        try:
-            json_data = json.loads(data)
-        except JSONDecodeError as exc:
-            raise ValueError(
-                f"Invalid JSON in config file '{config_path}': {exc.msg}"
-            ) from exc
-
-        if not isinstance(json_data, dict):
-            raise ValueError(
-                f"Config file '{config_path}' must contain a JSON object at the top level."
-            )
-
-        return Config.from_dict(json_data)
+        _, config = await load_config_source(config_path)
+        return config
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Config":
@@ -285,7 +265,7 @@ class Config:
         config._from_dict(data)
         return config
 
-    def _from_dict(self, data: dict):
+    def _from_dict(self, data: dict[str, Any]):
         if "live2dSocket" in data:
             self.live2dSocket = data["live2dSocket"]
 
@@ -395,3 +375,30 @@ class Config:
             )
 
         return models
+
+
+def parse_config_content(config_path: str, content: str) -> tuple[dict[str, Any], Config]:
+    if not content.strip():
+        return {}, Config()
+
+    try:
+        json_data = json.loads(content)
+    except JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON in config file '{config_path}': {exc.msg}") from exc
+
+    if not isinstance(json_data, dict):
+        raise ValueError(
+            f"Config file '{config_path}' must contain a JSON object at the top level."
+        )
+
+    return json_data, Config.from_dict(json_data)
+
+
+async def load_config_source(config_path: str) -> tuple[dict[str, Any], Config]:
+    try:
+        async with aiofiles.open(config_path, encoding="utf-8") as file:
+            data = await file.read()
+    except FileNotFoundError:
+        return {}, Config()
+
+    return parse_config_content(config_path, data)

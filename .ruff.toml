@@ -1,8 +1,8 @@
 target-version = "py314"
 extend-exclude = [
-    "tests/agent/test_tool_call_parser.py",
-    "tests/agent/test_transformers_quantization.py",
-    "tests/planning/test_integration.py",
+    "test/agent/test_tool_call_parser.py",
+    "test/agent/test_transformers_quantization.py",
+    "test/planning/test_integration.py",
 ]
 
 preview = true

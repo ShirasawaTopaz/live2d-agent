@@ -42,12 +42,21 @@ class Live2DAgentApp:
         from internal.app.bootstrap import bootstrap_application
 
         context = await bootstrap_application()
+        self._apply_bootstrap_context(context)
+        self._connect_runtime_and_input()
+        self._setup_tray_and_window()
+        self.show_input_box()
+        logger.info("输入框已显示")
+
+    def _apply_bootstrap_context(self, context: Any) -> None:
         self.config = context.config
         self.qt_app = context.qt_app
         self.ws = context.websocket
         self.agent = context.agent
         self.input_box = context.input_box
         self.bubble_widget = context.bubble_widget
+
+    def _connect_runtime_and_input(self) -> None:
         connect_input_signals(
             self.input_box,
             on_message_sent=self.on_message_sent,
@@ -57,6 +66,8 @@ class Live2DAgentApp:
         )
         if self.ws is not None:
             self.runtime_state.attach(self.ws)
+
+    def _setup_tray_and_window(self) -> None:
         if self.qt_app is not None:
             from internal.app.tray import create_tray_icon, setup_window_position
 
@@ -70,8 +81,6 @@ class Live2DAgentApp:
                 on_activated=self.on_tray_activated,
             )
             setup_window_position(self.qt_app, self.input_box)
-        self.show_input_box()
-        logger.info("输入框已显示")
 
     def _process_events(self) -> None:
         if self.qt_app is not None:

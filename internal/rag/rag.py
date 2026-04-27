@@ -1,6 +1,8 @@
 import logging
+import json
 from typing import List, Tuple, Optional
 from pathlib import Path
+from hashlib import sha256
 
 from internal.config.config import RAGConfig
 from internal.rag.document import DocumentLoader, DocumentChunker, Document
@@ -56,6 +58,11 @@ class RAGManager:
             self._index.clear()
             self._initialized = True
             return True
+
+        if self._load_cached_index_if_fresh():
+            self._initialized = True
+            logger.info(f"RAG initialization complete. Index size: {self._index.size}")
+            return True
             
         # Load all documents
         documents = self._loader.load_from_directory(self.config.document_dir)
@@ -93,12 +100,13 @@ class RAGManager:
         # Optionally save to cache
         if self.index_cache_path:
             self._index.save(self.index_cache_path)
+            self._save_cache_manifest()
             
         self._initialized = True
         logger.info(f"RAG initialization complete. Index size: {self._index.size}")
         return True
         
-    def retrieve(self, query: str, top_k: int = None) -> List[Document]:
+    def retrieve(self, query: str, top_k: Optional[int] = None) -> List[Document]:
         """Retrieve relevant documents for a query."""
         if not self.is_enabled or not self._initialized:
             return []
@@ -106,7 +114,8 @@ class RAGManager:
         if self._index.size == 0:
             return []
             
-        top_k = top_k or self.config.top_k
+        if top_k is None:
+            top_k = self.config.top_k
         
         try:
             # Generate query embedding
@@ -120,6 +129,68 @@ class RAGManager:
         except Exception as e:
             logger.error(f"Error during retrieval: {e}", exc_info=True)
             return []
+
+    def _cache_manifest_path(self) -> Path | None:
+        if not self.index_cache_path:
+            return None
+        return Path(f"{self.index_cache_path}.manifest.json")
+
+    def _document_signature(self) -> dict[str, object]:
+        signature_entries: list[dict[str, object]] = []
+        base_dir = Path(self.config.document_dir)
+        for file_path in sorted(base_dir.glob("**/*")):
+            if not file_path.is_file():
+                continue
+            if file_path.suffix.lower() not in [".txt", ".md"]:
+                continue
+            try:
+                stat = file_path.stat()
+            except OSError:
+                continue
+            signature_entries.append(
+                {
+                    "path": str(file_path.relative_to(base_dir)),
+                    "size": stat.st_size,
+                    "mtime_ns": stat.st_mtime_ns,
+                }
+            )
+
+        digest = sha256(json.dumps(signature_entries, ensure_ascii=False).encode("utf-8")).hexdigest()
+        return {
+            "document_dir": str(base_dir.resolve()),
+            "digest": digest,
+            "entries": signature_entries,
+        }
+
+    def _load_cached_index_if_fresh(self) -> bool:
+        manifest_path = self._cache_manifest_path()
+        if manifest_path is None or not manifest_path.exists():
+            return False
+
+        try:
+            cached_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.warning("Failed to read RAG cache manifest: %s", exc)
+            return False
+
+        current_manifest = self._document_signature()
+        if cached_manifest.get("digest") != current_manifest.get("digest"):
+            return False
+
+        if self._index.load(self.index_cache_path):
+            logger.info("Loaded cached RAG index for unchanged documents")
+            return True
+
+        return False
+
+    def _save_cache_manifest(self) -> None:
+        manifest_path = self._cache_manifest_path()
+        if manifest_path is None:
+            return
+
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest = self._document_signature()
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
             
     def format_retrieved_context(self, documents: List[Document]) -> str:
         """Format retrieved documents into a context string for prompt injection."""

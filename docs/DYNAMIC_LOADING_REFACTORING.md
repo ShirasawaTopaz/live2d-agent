@@ -173,13 +173,13 @@ success = await reloader.reload_by_path("/path/to/skill")
 All existing tests continue to pass after the refactoring:
 
 ```bash
-$ python tests/test_import.py
+$ python test/test_import.py
 ✓ Base imports successful
 ✓ Dynamic loader imports successful
 ✓ Class instantiation successful
 ✓ All tests passed!
 
-$ python tests/test_dynamic_basic.py
+$ python test/test_dynamic_basic.py
 Test: Polling watcher detects new skills
 --------------------------------------------------
 ...

@@ -30,7 +30,7 @@ jobs:
         run: poetry run pytest --collect-only
 
       - name: ruff scoped check
-        run: poetry run ruff check __main__.py build.py internal/config internal/prompt_manager internal/websocket tests
+        run: poetry run ruff check __main__.py build.py internal/config internal/prompt_manager internal/websocket test
 
       - name: mypy scoped check
         run: poetry run mypy __main__.py internal/config internal/prompt_manager internal/websocket

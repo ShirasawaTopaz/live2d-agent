@@ -1,12 +1,14 @@
 import pytest
 from tempfile import TemporaryDirectory
 from pathlib import Path
+from types import SimpleNamespace
+from importlib.util import find_spec
 from internal.config.config import RAGConfig
 from internal.rag.rag import RAGManager
 
 
 @pytest.mark.skipif(
-    not pytest.importorskip("faiss"),
+    find_spec("faiss") is None,
     reason="FAISS not installed"
 )
 class TestRAGManager:
@@ -99,3 +101,74 @@ class TestRAGManager:
             assert "First test content" in context
             assert "### 文档 2" in context
             assert "Second test content" in context
+
+    def test_initialize_uses_fresh_cache(self):
+        with TemporaryDirectory() as tmpdir:
+            (Path(tmpdir) / "doc.txt").write_text("cacheable content")
+            config = RAGConfig(enabled=True, document_dir=tmpdir, top_k=1)
+            rag = RAGManager(config, index_cache_path=str(Path(tmpdir) / "cache"))
+            rag._index._faiss_available = True
+            rag._document_signature = lambda: {"digest": "abc"}
+
+            calls: list[str] = []
+
+            def fake_load(path: str) -> bool:
+                calls.append(f"load:{path}")
+                rag._index._index = SimpleNamespace(ntotal=1)
+                rag._index._documents = []
+                return True
+
+            def fake_build(*_args, **_kwargs) -> None:
+                calls.append("build")
+
+            def fake_save(*_args, **_kwargs) -> None:
+                calls.append("save")
+
+            rag._index.load = fake_load
+            rag._index.build = fake_build
+            rag._index.save = fake_save
+
+            manifest_path = Path(f"{rag.index_cache_path}.manifest.json")
+            manifest_path.write_text(
+                '{"document_dir": "x", "digest": "abc", "entries": []}',
+                encoding="utf-8",
+            )
+
+            assert rag.initialize() is True
+            assert calls == [f"load:{rag.index_cache_path}"]
+
+
+def test_initialize_uses_fresh_cache_without_faiss():
+    with TemporaryDirectory() as tmpdir:
+        (Path(tmpdir) / "doc.txt").write_text("cacheable content")
+        config = RAGConfig(enabled=True, document_dir=tmpdir, top_k=1)
+        rag = RAGManager(config, index_cache_path=str(Path(tmpdir) / "cache"))
+        rag._index._faiss_available = True
+        rag._document_signature = lambda: {"digest": "abc"}
+
+        calls: list[str] = []
+
+        def fake_load(path: str) -> bool:
+            calls.append(f"load:{path}")
+            rag._index._index = SimpleNamespace(ntotal=1)
+            rag._index._documents = []
+            return True
+
+        def fake_build(*_args, **_kwargs) -> None:
+            calls.append("build")
+
+        def fake_save(*_args, **_kwargs) -> None:
+            calls.append("save")
+
+        rag._index.load = fake_load
+        rag._index.build = fake_build
+        rag._index.save = fake_save
+
+        manifest_path = Path(f"{rag.index_cache_path}.manifest.json")
+        manifest_path.write_text(
+            '{"document_dir": "x", "digest": "abc", "entries": []}',
+            encoding="utf-8",
+        )
+
+        assert rag.initialize() is True
+        assert calls == [f"load:{rag.index_cache_path}"]
