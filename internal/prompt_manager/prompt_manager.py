@@ -6,9 +6,12 @@ from pathlib import Path
 class PromptManager:
     """Prompt组合管理器，负责加载、管理和组合prompt模块"""
 
+    BASE_RULES_MODULE: str = "core/base_rules"
+    ROLEPLAY_MODULE: str = "personality/roleplay"
+
     _instance: Optional["PromptManager"] = None
     _modules: Dict[str, str] = {}
-    _modules_dir: Path
+    _modules_dir: Path = Path("prompt_modules")
 
     def __new__(cls):
         if cls._instance is None:
@@ -73,8 +76,22 @@ class PromptManager:
             if "modules" in prompt_config and isinstance(
                 prompt_config["modules"], list
             ):
-                for module_path in prompt_config["modules"]:
-                    module_content = self.get_module(str(module_path))
+                module_paths = [str(module_path) for module_path in prompt_config["modules"]]
+                roleplay_content = ""
+                if self.ROLEPLAY_MODULE in module_paths:
+                    roleplay_content = self.get_module(self.ROLEPLAY_MODULE) or ""
+
+                for module_path in module_paths:
+                    if module_path == self.ROLEPLAY_MODULE and roleplay_content:
+                        continue
+
+                    module_content = self.get_module(module_path)
+                    if module_path == self.BASE_RULES_MODULE and roleplay_content:
+                        if module_content:
+                            module_content = f"{roleplay_content}\n\n{module_content}"
+                        else:
+                            module_content = roleplay_content
+
                     if module_content:
                         parts.append(module_content)
 

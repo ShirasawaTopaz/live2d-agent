@@ -47,6 +47,10 @@ def _write_prompt_tree(tmp_path: Path) -> Path:
     (modules_dir / "persona" / "voice.md").write_text(
         "Hello {{name}}, you have {{count}} tasks.", encoding="utf-8"
     )
+    (modules_dir / "personality").mkdir(parents=True)
+    (modules_dir / "personality" / "roleplay.md").write_text(
+        "Roleplay identity", encoding="utf-8"
+    )
 
     return modules_dir
 
@@ -62,6 +66,7 @@ async def test_load_recursively_loads_nested_markdown_modules(tmp_path):
     assert {key: sorted(value) for key, value in manager.list_modules_by_category().items()} == {
         "core": ["core/base_rules", "core/style"],
         "persona": ["persona/voice"],
+        "personality": ["personality/roleplay"],
     }
 
 
@@ -101,6 +106,22 @@ async def test_compose_system_prompt_keeps_prefix_without_base_rules(tmp_path):
     )
 
     assert prompt == "Persona must be followed\n\nStyle guide"
+
+
+async def test_compose_system_prompt_copies_roleplay_to_base_rules_header(tmp_path):
+    manager = await PromptManager.load(_write_prompt_tree(tmp_path))
+
+    prompt = await manager.compose_system_prompt(
+        {
+            "modules": [
+                "personality/roleplay",
+                "core/base_rules",
+                "core/style",
+            ],
+        }
+    )
+
+    assert prompt == "Roleplay identity\n\nBase rules\n\nStyle guide"
 
 
 async def test_render_module_substitutes_placeholders_and_missing_module_returns_empty(tmp_path):

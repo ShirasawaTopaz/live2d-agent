@@ -40,6 +40,7 @@
                     "capabilities/live2d_ctrl"
                 ],
                 "personality": [
+                    "personality/roleplay",
                     "personality/cute"
                 ],
                 "scenarios": [
@@ -51,6 +52,7 @@
             },
             "system_prompt": {
                 "modules": [
+                    "personality/roleplay",
                     "core/base_rules",
                     "core/tool_calling",
                     "core/live2d_rules",
@@ -86,6 +88,7 @@
                     "capabilities/live2d_ctrl"
                 ],
                 "personality": [
+                    "personality/roleplay",
                     "personality/cute"
                 ],
                 "scenarios": [
@@ -96,8 +99,8 @@
                 ]
             },
             "system_prompt": {
-                "prefix": "你是花里实乃理，是我(Shirasawa)的老婆。",
                 "modules": [
+                    "personality/roleplay",
                     "core/base_rules",
                     "core/tool_calling",
                     "core/live2d_rules",

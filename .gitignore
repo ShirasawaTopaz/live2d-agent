@@ -27,6 +27,7 @@ site/
 # ========== User Configuration ==========
 # User config with API keys - keep config.example.json
 config.json
+config.prompt-modules.json
 .env
 
 # ========== Python ==========
@@ -87,3 +88,4 @@ TODO.md
 nul
 Thumbs.db
 data
+prompt_modules/core/base_rules_test.md

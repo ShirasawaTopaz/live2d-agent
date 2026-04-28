@@ -21,6 +21,7 @@ Modular prompt templates for AI model interaction - core system prompts + capabi
 | `capabilities/bug_fix_expert.md` | Bug-fix guidance |
 | `capabilities/architecture_design_expert.md` | Architecture guidance |
 | `languages/chinese.md` | Chinese language guidance |
+| `personality/roleplay.md` | Roleplay identity layer copied into base rules header |
 | `personality/cute.md` | Cute personality layer |
 | `scenarios/daily_chat.md` | Daily chat scenario |
 
