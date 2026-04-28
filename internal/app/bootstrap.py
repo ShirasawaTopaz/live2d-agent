@@ -2,13 +2,19 @@ import logging
 import sys
 from dataclasses import dataclass
 from importlib import import_module
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from internal.agent.agent import create_agent
 from internal.config.config import Config
 from internal.prompt_manager import PromptManager
-from internal.ui import BubbleWidget, FloatingInputBox
 from internal.websocket.reconnect import ExponentialBackoff, ReconnectingWebSocket
+
+if TYPE_CHECKING:
+    from internal.ui import BubbleWidget, FloatingInputBox
+
+
+BubbleWidget: Any = None
+FloatingInputBox: Any = None
 
 
 logger = logging.getLogger(__name__)
@@ -20,8 +26,8 @@ class BootstrapContext:
     qt_app: Any
     websocket: ReconnectingWebSocket
     agent: Any
-    input_box: FloatingInputBox
-    bubble_widget: BubbleWidget
+    input_box: "FloatingInputBox"
+    bubble_widget: "BubbleWidget"
 
 
 async def bootstrap_application() -> BootstrapContext:
@@ -60,7 +66,14 @@ def create_qt_application() -> Any:
     return qt_app
 
 
-def create_ui_components(agent: Any) -> tuple[FloatingInputBox, BubbleWidget]:
+def create_ui_components(agent: Any) -> tuple["FloatingInputBox", "BubbleWidget"]:
+    global BubbleWidget, FloatingInputBox
+
+    if FloatingInputBox is None or BubbleWidget is None:
+        ui_module = import_module("internal.ui")
+        FloatingInputBox = ui_module.FloatingInputBox
+        BubbleWidget = ui_module.BubbleWidget
+
     input_box = FloatingInputBox(agent=agent, title="Agent Chat")
     bubble_widget = BubbleWidget()
     bubble_widget.set_theme(str(input_box._theme))
