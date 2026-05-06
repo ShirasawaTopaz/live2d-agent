@@ -90,3 +90,23 @@ def test_live2d_scheduler_falls_back_to_noop_when_configured():
 
     assert tool_calls == []
     assert plan.tool_calls == []
+
+
+def test_live2d_scheduler_noops_when_expressions_disabled():
+    scheduler = Live2DExpressionScheduler(
+        Live2DConflictController(Live2DExpressionsConfig(enabled=False)),
+        Live2DExpressionsConfig(enabled=False),
+    )
+
+    contract = {
+        "main_emotion": "happy",
+        "stage_sequence": [{"tool": "next_expression"}],
+    }
+
+    tool_calls = scheduler.build_tool_calls(contract)
+    plan = scheduler.build_plan(contract, tool_calls)
+
+    assert tool_calls == []
+    assert plan.tool_calls == []
+    assert plan.consumes_assistant_content is False
+    assert plan.has_confirmation_blocker is False

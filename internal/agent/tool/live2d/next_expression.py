@@ -14,17 +14,21 @@ class Live2dNextExpression:
 
 
 class NextExpressionTool(Tool):
-    def __init__(self, expression_count: int | None = None) -> None:
+    def __init__(self, expression_count: int | None = None, expressions_enabled: bool = True) -> None:
         # Keep rotation client-side when expression count is known, because some
         # Live2D services do not wrap NextExpression back to the first item.
         self._expression_count = expression_count if expression_count is not None and expression_count > 0 else None
         self._next_expression_id = 0
+        self._expressions_enabled = expressions_enabled
 
     def set_expression_count(self, expression_count: int | None) -> None:
         # Preserve the current cursor while keeping it valid after config reloads.
         self._expression_count = expression_count if expression_count is not None and expression_count > 0 else None
         if self._expression_count is not None:
             self._next_expression_id %= self._expression_count
+
+    def set_expressions_enabled(self, enabled: bool) -> None:
+        self._expressions_enabled = enabled
 
     @property
     def name(self) -> str:
@@ -45,6 +49,9 @@ class NextExpressionTool(Tool):
         }
 
     async def execute(self, **kwargs) -> None:
+        if not self._expressions_enabled:
+            return
+
         ws = kwargs.get("ws")
         if ws is None:
             return

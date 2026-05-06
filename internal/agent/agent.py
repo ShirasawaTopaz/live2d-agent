@@ -91,12 +91,15 @@ class Agent:
 
     def configure_live2d_expression_tools(self, expressions_config: Any | None) -> None:
         # Inject configured stage count so Live2D tools can wrap expression rotation locally.
+        expressions_enabled = bool(getattr(expressions_config, "enabled", True))
         stages = getattr(expressions_config, "stages", []) if expressions_config is not None else []
-        expression_count = len(stages) if isinstance(stages, list) else None
+        expression_count = len(stages) if expressions_enabled and isinstance(stages, list) else None
         for tool_name in ("next_expression", "display_bubble_text"):
             tool = self.tool_registry.tools.get(tool_name)
             if tool is not None and hasattr(tool, "set_expression_count"):
                 tool.set_expression_count(expression_count)
+            if tool is not None and hasattr(tool, "set_expressions_enabled"):
+                tool.set_expressions_enabled(expressions_enabled)
 
 
     def _should_skip_content(self, content: str) -> bool:

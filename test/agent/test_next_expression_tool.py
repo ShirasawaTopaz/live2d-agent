@@ -37,3 +37,17 @@ async def test_next_expression_tool_keeps_protocol_next_without_expression_count
     await tool.execute(ws=object())
 
     assert sent_messages[0][1] == next_expression.NextExpression
+
+
+async def test_next_expression_tool_sends_nothing_when_expressions_disabled(monkeypatch):
+    sent_messages = []
+
+    async def fake_send_message(ws, msg_type, msg_id, data):
+        sent_messages.append((ws, msg_type, msg_id, data))
+
+    monkeypatch.setattr(next_expression, "send_message", fake_send_message)
+    tool = NextExpressionTool(expression_count=2, expressions_enabled=False)
+
+    await tool.execute(ws=object())
+
+    assert sent_messages == []

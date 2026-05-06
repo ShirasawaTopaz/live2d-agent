@@ -23,3 +23,19 @@ async def test_display_bubble_text_tool_wraps_expression_rotation(monkeypatch):
 
     expression_messages = [message for message in sent_messages if message[0] == SetExpression]
     assert [message[2].expId for message in expression_messages] == [0, 1, 0]
+
+
+async def test_display_bubble_text_tool_does_not_rotate_when_expressions_disabled(monkeypatch):
+    sent_messages = []
+
+    async def fake_send_message(ws, msg_type, msg_id, data):
+        sent_messages.append((msg_type, msg_id, data))
+
+    monkeypatch.setattr(display_bubble_text, "send_message", fake_send_message)
+    tool = DisplayBubbleTextTool(expression_count=2, expressions_enabled=False)
+
+    await tool.execute(ws=object(), text="hello", duration=1)
+
+    expression_messages = [message for message in sent_messages if message[0] == SetExpression]
+    assert expression_messages == []
+    assert sent_messages[-1][0] == display_bubble_text.DisplayBubbleText

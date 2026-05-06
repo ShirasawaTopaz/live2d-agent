@@ -114,11 +114,21 @@ class Live2DExpressionScheduler:
     def set_expressions_config(self, expressions_config: Any | None) -> None:
         self._expressions_config = expressions_config
 
+    def _expressions_enabled(self) -> bool:
+        return bool(getattr(self._expressions_config, "enabled", True))
+
     def build_plan(
         self,
         contract: dict[str, Any],
         tool_calls: list[dict[str, Any]] | None = None,
     ) -> Live2DExpressionPlan:
+        if not self._expressions_enabled():
+            return Live2DExpressionPlan(
+                tool_calls=[],
+                consumes_assistant_content=False,
+                has_confirmation_blocker=False,
+            )
+
         tool_calls = tool_calls if tool_calls is not None else self.build_tool_calls(contract)
         has_confirmation_blocker = any(
             self._conflict.ACTION_RULES.get(self._tool_name(tool_call), Live2DActionRule(priority=0)).confirmation_blocker
@@ -154,6 +164,9 @@ class Live2DExpressionScheduler:
         return None
 
     def build_tool_calls(self, contract: dict[str, Any]) -> list[dict[str, Any]]:
+        if not self._expressions_enabled():
+            return []
+
         stage_sequence = contract.get("stage_sequence", [])
         if not isinstance(stage_sequence, list) or not stage_sequence:
             return self._fallback_tool_calls(contract)

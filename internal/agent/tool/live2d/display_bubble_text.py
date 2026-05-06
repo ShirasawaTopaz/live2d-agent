@@ -22,17 +22,21 @@ class DisplayBubbleTextTool(Tool):
     _last_bubble_time: float = 0.0  # 最后一次气泡显示开始时间
     _last_bubble_duration: float = 0.0  # 最后一次气泡显示时长（秒）
 
-    def __init__(self, expression_count: int | None = None) -> None:
+    def __init__(self, expression_count: int | None = None, expressions_enabled: bool = True) -> None:
         # Bubble display also rotates expressions, so keep the same deterministic
         # client-side cursor used by the next_expression tool.
         self._expression_count = expression_count if expression_count is not None and expression_count > 0 else None
         self._next_expression_id = 0
+        self._expressions_enabled = expressions_enabled
 
     def set_expression_count(self, expression_count: int | None) -> None:
         # Preserve the current cursor while keeping it valid after config reloads.
         self._expression_count = expression_count if expression_count is not None and expression_count > 0 else None
         if self._expression_count is not None:
             self._next_expression_id %= self._expression_count
+
+    def set_expressions_enabled(self, enabled: bool) -> None:
+        self._expressions_enabled = enabled
 
     async def _send_next_expression(self, ws, model_id: int) -> None:
         if self._expression_count is not None:
@@ -172,7 +176,7 @@ class DisplayBubbleTextTool(Tool):
             duration = self.calculate_bubble_duration(text)
 
         ws = kwargs.get("ws")
-        if ws is not None:
+        if ws is not None and self._expressions_enabled:
             await self._send_next_expression(ws, kwargs.get("id", 0))
 
         # 获取 Qt 气泡组件，如果存在则使用 Qt 气泡显示
