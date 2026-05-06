@@ -8,6 +8,7 @@ This guide covers everything you need to know to install, configure, and use Liv
 - [Live2D WebSocket Setup](#live2d-websocket-setup)
 - [User Interface Guide](#user-interface-guide)
 - [AI Backends Guide](#ai-backends-guide)
+- [Source-Only Transformers Fine-Tuning Helper](#source-only-transformers-fine-tuning-helper)
 - [Skill System](#skill-system)
 - [Conversation Memory & MCP (Model Context Protocol)](#conversation-memory--mcp-model-context-protocol)
 - [Security Sandbox](#security-sandbox)
@@ -485,6 +486,40 @@ git clone https://huggingface.co/google/gemma-3-1b-it
 - **7B models**: 8GB+ VRAM (4-bit quantization) or 16GB+ RAM (CPU)
 - **12B+ models**: 16GB+ VRAM required
 - GPU acceleration is strongly recommended. Without a GPU, response times will be very slow for models larger than 3B parameters.
+
+---
+
+## Source-Only Transformers Fine-Tuning Helper
+
+Live2oder includes a source-only utility, not packaged into exe, for users who want to prepare a local Transformers causal language model for later Ollama import. The helper lives at `scripts/finetune_transformers_for_ollama.py` and must be run from a source checkout, not from a packaged executable installation.
+
+Start with the interactive wizard:
+
+```bash
+poetry run python scripts/finetune_transformers_for_ollama.py --wizard
+```
+
+Before any real training run, add `--dry-run` to validate inputs and review the planned stages first. Dry-run mode is the safest default because local training depends on your GPU, CUDA or CPU setup, optional ML packages, model size, and export tools.
+
+The expected high-level flow is:
+
+1. Choose a Transformers base model.
+2. Train a LoRA or QLoRA adapter from a local JSONL dataset.
+3. Merge or export the trained artifacts when appropriate.
+4. Convert or prepare a GGUF file and `Modelfile`.
+5. Run `ollama create` or import the prepared model into Ollama.
+
+Use local JSONL data only. The helper supports these dataset shapes at a high level:
+
+```jsonl
+{"messages":[{"role":"user","content":"你好"},{"role":"assistant","content":"你好，我在这里。"}]}
+```
+
+```jsonl
+{"prompt":"你好","completion":"你好，我在这里。"}
+```
+
+Packaged exe users should not expect this helper inside the executable or packaged output directory. Clone the repository and run the script from source instead. A separate Python training environment is recommended because the app targets Python `>=3.14,<3.15`, while many ML training stacks may require Python 3.11, 3.12, or 3.13.
 
 ---
 

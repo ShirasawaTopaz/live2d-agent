@@ -4,6 +4,7 @@ from typing import List, Optional
 from dataclasses import dataclass
 
 
+from internal.agent.planning.plan import ConcretePlan
 from internal.agent.planning.validator import PlanValidator, ValidationResult
 from internal.agent.planning.base import Plan, Task
 
@@ -178,6 +179,20 @@ class TestPlanValidatorValidation:
         result = validator.validate(plan)
         assert result.is_valid is False
         assert any("depends on non-existent task: missing_task" in err for err in result.errors)
+
+    def test_external_dependency_allowed_when_plan_supports_it(self):
+        """Test that plans with external dependency semantics can pass validation."""
+        validator = PlanValidator()
+        plan = ConcretePlan(
+            plan_id="test",
+            name="Test Plan",
+            description="Plan with external dependency",
+        )
+        plan.add_task(TestTask("task1", "Task 1", "Task", ["external_task"]))
+
+        result = validator.validate(plan)
+        assert result.is_valid is True
+        assert result.errors == []
 
     def test_cyclic_detection_direct_cycle(self):
         """Test direct cycle A -> B -> A is detected."""

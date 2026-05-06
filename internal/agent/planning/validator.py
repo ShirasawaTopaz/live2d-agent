@@ -40,7 +40,7 @@ class PlanValidator:
     def validate_dependencies(self, plan: Plan) -> List[str]:
         """Validate plan dependencies:
         - Check for duplicate task_ids
-        - Check that all dependencies reference existing tasks
+        - Allow external dependencies when the plan supports them
         - Check for cyclic dependencies
         """
         errors: List[str] = []
@@ -52,11 +52,17 @@ class PlanValidator:
                 errors.append(f"Duplicate task_id: {task.task_id}")
             task_ids.add(task.task_id)
 
-        # Check all dependencies reference existing tasks
+        # Check all dependencies that reference tasks inside this plan
+        # External dependencies are allowed when the plan explicitly treats
+        # them as satisfied outside the local task graph.
         for task in plan.tasks:
             for dep in task.dependencies:
                 if dep not in task_ids:
-                    errors.append(f"Task '{task.task_id}' depends on non-existent task: {dep}")
+                    if self._dependency_is_allowed_outside_plan(plan, task, dep):
+                        continue
+                    errors.append(
+                        f"Task '{task.task_id}' depends on non-existent task: {dep}"
+                    )
 
         # Check for cyclic dependencies using DFS
         visited: Set[str] = set()
@@ -87,6 +93,16 @@ class PlanValidator:
                 has_cycle(task.task_id)
 
         return errors
+
+    def _dependency_is_allowed_outside_plan(self, plan: Plan, task: Task, dep_id: str) -> bool:
+        """Return True when an out-of-plan dependency is intentionally allowed."""
+        check_fn = getattr(plan, "check_dependencies_satisfied", None)
+        if callable(check_fn):
+            try:
+                return bool(check_fn(task.task_id))
+            except Exception:
+                return False
+        return False
 
     def _build_cycle_path(self, current_task_id: str, start_dep_id: str, plan: Plan) -> List[str]:
         """Build the path from the cycle start to current task for error reporting."""

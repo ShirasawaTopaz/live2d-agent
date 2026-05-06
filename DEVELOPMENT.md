@@ -151,6 +151,17 @@ live2d-agent/
 - `CLAUDE.md` - Development guidance for AI coding assistants
 - `README.md` - Project overview and quick start guide
 
+### Source-Only Training Helper Boundary
+
+`scripts/finetune_transformers_for_ollama.py` is a source-only helper for preparing Transformers fine-tuning artifacts for Ollama. It is not packaged into exe builds, and contributors must not add it to `live2d-agent.spec`.
+
+Keep the helper outside the main desktop app packaging boundary:
+
+- Do not add `finetune_transformers_for_ollama.py` to `live2d-agent.spec`, packaged data, hidden imports, or build output inventory.
+- Do not add heavy training dependencies such as PyTorch, PEFT, TRL, bitsandbytes, Unsloth, or llama.cpp tooling to the main app dependencies.
+- Prefer runtime dependency checks and user guidance in the source-only helper instead of changing normal `poetry install` behavior for app users.
+- Keep packaged exe expectations clear: the desktop app can use Ollama models after users import them, but the training helper itself is run from a source checkout.
+
 ## Testing Guide
 
 ### Current State

@@ -5,10 +5,80 @@ Supports hierarchical nesting, dependency checking, and serialization
 
 import uuid
 from datetime import datetime
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
 from .base import Plan, Task, PlanContext, TaskResult
 from .types import TaskStatus, PlanStatus
+
+
+@dataclass
+class SerializedTask(Task):
+    """Generic task restored from serialized data when no factory is provided."""
+
+    _task_id: str
+    _name: str
+    _description: str
+    _dependencies: List[str]
+    _status: str
+    _payload: Dict[str, Any]
+
+    @property
+    def task_id(self) -> str:
+        return self._task_id
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @name.setter
+    def name(self, value: str) -> None:
+        self._name = value
+
+    @property
+    def description(self) -> str:
+        return self._description
+
+    @description.setter
+    def description(self, value: str) -> None:
+        self._description = value
+
+    @property
+    def dependencies(self) -> List[str]:
+        return self._dependencies
+
+    @dependencies.setter
+    def dependencies(self, value: List[str]) -> None:
+        self._dependencies = value
+
+    @property
+    def status(self) -> str:
+        return self._status
+
+    @status.setter
+    def status(self, value: str) -> None:
+        self._status = value
+
+    async def execute(self, context: PlanContext) -> TaskResult:
+        return TaskResult(
+            task_id=self._task_id,
+            success=False,
+            result=self._payload,
+            error="Task was restored from serialized data without a factory",
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        payload = dict(self._payload)
+        payload.update(
+            {
+                "task_id": self._task_id,
+                "name": self._name,
+                "description": self._description,
+                "dependencies": self._dependencies,
+                "status": self._status,
+            }
+        )
+        return payload
 
 
 class ConcretePlan(Plan, Task):
@@ -389,9 +459,31 @@ class ConcretePlan(Plan, Task):
                 subplan = cls.from_dict(task_data["data"], task_factory)
                 plan.add_task(subplan)
             else:
-                # Regular task - use factory if provided
+                # Regular task - use factory if provided, otherwise preserve
+                # the serialized task as a generic task shell so it is not lost.
+                serialized_task = task_data.get("data", {})
                 if task_factory is not None:
-                    task = task_factory(task_data["data"])
-                    plan.add_task(task)
-        
+                    task = task_factory(serialized_task)
+                else:
+                    task = SerializedTask(
+                        _task_id=serialized_task.get("task_id", task_id),
+                        _name=serialized_task.get("name", ""),
+                        _description=serialized_task.get("description", ""),
+                        _dependencies=list(serialized_task.get("dependencies", [])),
+                        _status=serialized_task.get("status", TaskStatus.PENDING.value),
+                        _payload={
+                            key: value
+                            for key, value in serialized_task.items()
+                            if key
+                            not in {
+                                "task_id",
+                                "name",
+                                "description",
+                                "dependencies",
+                                "status",
+                            }
+                        },
+                    )
+                plan.add_task(task)
+
         return plan

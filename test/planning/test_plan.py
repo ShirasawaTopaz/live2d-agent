@@ -73,6 +73,20 @@ class SimpleTask(Task):
         }
 
 
+def _make_serialized_task(task_id: str, name: str, dependencies: list[str] | None = None) -> dict:
+    return {
+        "type": "task",
+        "data": {
+            "task_id": task_id,
+            "name": name,
+            "description": "desc",
+            "dependencies": dependencies or [],
+            "status": TaskStatus.PENDING.value,
+            "custom": {"origin": "fixture"},
+        },
+    }
+
+
 class TestConcretePlan:
     """Test cases for the ConcretePlan class."""
     
@@ -402,6 +416,32 @@ class TestConcretePlan:
         restored_l3_t1 = restored_l3.get_task("l3-t1")
         assert restored_l3_t1 is not None
         assert restored_l3_t1.name == "L3 Task"
+
+    def test_from_dict_preserves_tasks_without_factory(self):
+        """Test that tasks are not dropped when no task_factory is provided."""
+        data = {
+            "plan_id": "p1",
+            "name": "Plan",
+            "description": "Desc",
+            "tasks": {
+                "t1": _make_serialized_task("t1", "Task 1"),
+            },
+            "dependencies": [],
+            "metadata": {},
+            "created_at": self.plan.created_at.isoformat(),
+            "updated_at": self.plan.updated_at.isoformat(),
+            "plan_status": PlanStatus.PENDING.value,
+            "task_status": TaskStatus.PENDING.value,
+        }
+
+        restored = ConcretePlan.from_dict(data)
+
+        assert len(restored.tasks) == 1
+        restored_task = restored.get_task("t1")
+        assert restored_task is not None
+        assert restored_task.name == "Task 1"
+        assert restored_task.dependencies == []
+        assert restored_task.status == TaskStatus.PENDING.value
 
     def test_updated_at_changes_on_modification(self):
         """Test that updated_at timestamp changes when plan is modified."""

@@ -31,6 +31,8 @@ class FloatingInputBox(QWidget):
     - 支持清空当前活动上下文
     """
 
+    EXPANDED_MAX_HEIGHT = 16777215
+
 
     # 信号定义
     message_sent = Signal(str)  # 用户发送消息时触发 (text,)
@@ -252,6 +254,7 @@ class FloatingInputBox(QWidget):
         self._is_expanded = True
         self.content_widget.show()
         self.setMinimumHeight(140)
+        self.setMaximumHeight(self.EXPANDED_MAX_HEIGHT)
         self.resize(self.width(), 180)
 
     def collapse(self):
@@ -526,7 +529,9 @@ class FloatingInputBox(QWidget):
     def set_plan_mode(self, enabled: bool):
         """设置Plan模式状态"""
         self.plan_mode_checkbox.setChecked(enabled)
+        self.on_plan_mode_toggled(enabled)
 
     def set_orchestration_mode(self, enabled: bool):
         """设置编排模式状态"""
         self.orchestration_mode_checkbox.setChecked(enabled)
+        self.on_orchestration_mode_toggled(enabled)
