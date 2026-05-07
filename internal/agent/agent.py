@@ -20,6 +20,7 @@ from .sandbox import SandboxConfig, SandboxMiddleware, default_sandbox
 from .tool.base import Tool
 from .tool.dynamic.storage import DynamicToolStorage
 from .tool_setup import register_default_tools
+from .voice import GPTSoVITSVoiceClient
 from internal.config.config import AIModelConfig, AIModelType, Config, PlanningConfig
 from internal.memory import MemoryConfig, MemoryManager
 from internal.rag.rag import RAGManager
@@ -54,6 +55,7 @@ class Agent:
         sandbox_config: SandboxConfig | None = None,
         planning_config: PlanningConfig | None = None,
         rag_config: RAGConfig | None = None,
+        voice_config: Any | None = None,
     ) -> None:
         self.model = model
         self.tool_registry = ToolRegistry()
@@ -66,7 +68,8 @@ class Agent:
         if loaded_count > 0:
             logging.info(f"Loaded {loaded_count} dynamic tool(s) from storage")
 
-        self.bubble_timing = BubbleTimingController()
+        voice_client = GPTSoVITSVoiceClient(voice_config) if voice_config is not None and getattr(voice_config, "enabled", False) else None
+        self.bubble_timing = BubbleTimingController(voice_client=voice_client)
         self.live2d_conflict = Live2DConflictController()
         self.live2d_expressions = None
         self.live2d_scheduler = Live2DExpressionScheduler(self.live2d_conflict)
@@ -243,6 +246,7 @@ def create_agent(
     ) -> Agent:
     """根据配置创建Agent实例。"""
     rag_config = global_config.rag if global_config is not None else None
+    voice_config = global_config.voice if global_config is not None else None
 
     if memory_config is not None:
         setattr(memory_config, "small_model_memory_model_config", model_config)
@@ -262,6 +266,7 @@ def create_agent(
         sandbox_config=sandbox_config,
         planning_config=planning_config,
         rag_config=rag_config,
+        voice_config=voice_config,
     )
     if global_config is not None:
         agent.live2d_conflict = Live2DConflictController(global_config.live2dExpressions)

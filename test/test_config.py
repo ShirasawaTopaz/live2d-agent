@@ -22,6 +22,8 @@ def test_load_missing_config_file_returns_defaults(tmp_path):
     assert config.models == []
     assert config.live2dExpressions.enabled is True
     assert config.live2dExpressions.default_expression == "EXP_NEUTRAL_01"
+    assert config.voice.enabled is False
+    assert config.voice.endpoint == "http://127.0.0.1:9880/tts"
     assert config.memory is not None
     assert config.sandbox is not None
 
@@ -156,6 +158,22 @@ def test_config_to_dict_roundtrip_for_known_sections():
         "sandbox": {"enabled": True, "approval": {"timeout_seconds": 45}},
         "planning": {"enabled": True, "storage_type": "json", "storage_path": "data/plans.json"},
         "rag": {"enabled": True, "document_dir": "./docs", "chunk_size": 256, "chunk_overlap": 16, "top_k": 5},
+        "voice": {
+            "enabled": True,
+            "endpoint": "http://127.0.0.1:9880/tts",
+            "method": "POST",
+            "text_lang": "zh",
+            "ref_audio_path": "ref.wav",
+            "prompt_text": "你好",
+            "prompt_lang": "zh",
+            "text_split_method": "cut5",
+            "batch_size": 2,
+            "speed_factor": 1.2,
+            "streaming_mode": False,
+            "timeout_seconds": 12,
+            "volume": 0.5,
+            "max_tts_chars": 80,
+        },
     }
 
     config = Config.from_dict(config_data)
@@ -171,6 +189,13 @@ def test_config_to_dict_roundtrip_for_known_sections():
     assert restored.sandbox.approval.timeout_seconds == 45
     assert restored.planning.enabled is True
     assert restored.rag.document_dir == "./docs"
+    assert restored.voice.enabled is True
+    assert restored.voice.method == "POST"
+    assert restored.voice.ref_audio_path == "ref.wav"
+    assert restored.voice.batch_size == 2
+    assert restored.voice.speed_factor == 1.2
+    assert restored.voice.volume == 0.5
+    assert restored.voice.max_tts_chars == 80
 
 
 def test_memory_config_preserves_mcp_fields_roundtrip():

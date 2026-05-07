@@ -123,6 +123,63 @@ class RAGConfig:
 
 
 @dataclass
+class VoiceConfig:
+    """Configuration for GPT-SoVITs voice synthesis."""
+
+    enabled: bool = False
+    endpoint: str = "http://127.0.0.1:9880/tts"
+    method: str = "GET"
+    text_lang: str = "zh"
+    ref_audio_path: str = ""
+    prompt_text: str = ""
+    prompt_lang: str = "zh"
+    text_split_method: str = "cut5"
+    batch_size: int = 1
+    speed_factor: float = 1.0
+    streaming_mode: bool = False
+    timeout_seconds: int = 60
+    volume: float = 1.0
+    max_tts_chars: int = 500
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "VoiceConfig":
+        return cls(
+            enabled=data.get("enabled", False),
+            endpoint=data.get("endpoint", "http://127.0.0.1:9880/tts"),
+            method=data.get("method", "GET"),
+            text_lang=data.get("text_lang", "zh"),
+            ref_audio_path=data.get("ref_audio_path", ""),
+            prompt_text=data.get("prompt_text", ""),
+            prompt_lang=data.get("prompt_lang", "zh"),
+            text_split_method=data.get("text_split_method", "cut5"),
+            batch_size=data.get("batch_size", 1),
+            speed_factor=data.get("speed_factor", 1.0),
+            streaming_mode=data.get("streaming_mode", False),
+            timeout_seconds=data.get("timeout_seconds", 60),
+            volume=data.get("volume", 1.0),
+            max_tts_chars=data.get("max_tts_chars", 500),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "endpoint": self.endpoint,
+            "method": self.method,
+            "text_lang": self.text_lang,
+            "ref_audio_path": self.ref_audio_path,
+            "prompt_text": self.prompt_text,
+            "prompt_lang": self.prompt_lang,
+            "text_split_method": self.text_split_method,
+            "batch_size": self.batch_size,
+            "speed_factor": self.speed_factor,
+            "streaming_mode": self.streaming_mode,
+            "timeout_seconds": self.timeout_seconds,
+            "volume": self.volume,
+            "max_tts_chars": self.max_tts_chars,
+        }
+
+
+@dataclass
 class Live2DExpressionStageConfig:
     emotion: str = ""
     expression: str = ""
@@ -253,6 +310,7 @@ class Config:
         self.sandbox: SandboxConfig = SandboxConfig()
         self.planning: PlanningConfig = PlanningConfig()
         self.rag: RAGConfig = RAGConfig()
+        self.voice: VoiceConfig = VoiceConfig()
 
     @staticmethod
     async def load(config_path: str = DEFAULT_CONFIG_PATH) -> "Config":
@@ -301,6 +359,11 @@ class Config:
             # Use default RAG configuration (disabled by default)
             self.rag = RAGConfig()
 
+        if "voice" in data and isinstance(data["voice"], dict):
+            self.voice = VoiceConfig.from_dict(data["voice"])
+        else:
+            self.voice = VoiceConfig()
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "live2dSocket": self.live2dSocket,
@@ -310,6 +373,7 @@ class Config:
             "sandbox": self.sandbox.to_dict(),
             "planning": self.planning.to_dict(),
             "rag": self.rag.to_dict(),
+            "voice": self.voice.to_dict(),
         }
 
     # 调用最上面设置为default的模型配置，如果都没设置default=true，则默认调用第一个

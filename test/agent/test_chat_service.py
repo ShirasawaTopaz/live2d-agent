@@ -40,6 +40,7 @@ class FakeBubbleTiming:
     def __init__(self):
         self.single_bubbles: list[str] = []
         self.displayed_texts: list[tuple[str, int]] = []
+        self.finished_streams: list[str] = []
 
     @staticmethod
     def should_skip_content(_content: str) -> bool:
@@ -50,6 +51,12 @@ class FakeBubbleTiming:
 
     async def display_text(self, text, _ws, _bubble_widget, **kwargs):
         self.displayed_texts.append((text, kwargs.get("text_color", 0xFFFFFF)))
+
+    async def send_stream_chunk(self, current_content, *_args, **_kwargs):
+        return None
+
+    async def finish_stream(self, final_content, _bubble_widget):
+        self.finished_streams.append(final_content)
 
 
 class FakeWs(Client):
@@ -75,6 +82,15 @@ class FakeModel:
     async def chat(self, message, tools=None):
         self.calls.append((message, tools))
         return self.responses.pop(0)
+
+    def stream_chat(self, message, tools=None):
+        self.calls.append((message, tools))
+
+        async def stream():
+            for response in self.responses:
+                yield response
+
+        return stream()
 
 
 class FakeAgent:
@@ -192,3 +208,22 @@ async def _run_chat_service_with_memory_keeps_system_and_does_not_duplicate_long
 
 def test_chat_service_with_memory_keeps_system_and_does_not_duplicate_long_input():
     asyncio.run(_run_chat_service_with_memory_keeps_system_and_does_not_duplicate_long_input())
+
+
+async def _run_streaming_chat_finishes_stream_once():
+    agent = FakeAgent([
+        {"content": "hello", "done": False},
+        {"content": "hello world", "done": True},
+    ])
+    agent.model.config.streaming = True
+    agent.model._tools_supported = False
+    service = ChatService(agent)
+
+    response = await service.chat("hello", FakeWs())
+
+    assert response == {"role": "assistant", "content": "hello world"}
+    assert agent.bubble_timing.finished_streams == ["hello world"]
+
+
+def test_streaming_chat_finishes_stream_once():
+    asyncio.run(_run_streaming_chat_finishes_stream_once())

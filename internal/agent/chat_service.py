@@ -402,6 +402,7 @@ class ChatService:
             arguments = ToolCallParser.parse_arguments(tool_call)
             arguments["ws"] = ws
             arguments["bubble_widget"] = self.agent.bubble_widget
+            arguments["bubble_timing"] = self.agent.bubble_timing
             result = await self.agent.tool_registry.tools[function_name].execute(**arguments)
 
             logging.info(f"Fallback executed tool: {function_name}, result: {result}")
@@ -506,7 +507,7 @@ class ChatService:
             first_chunk = False
 
         if has_content:
-            self.agent.bubble_timing.finish_stream(final_content, self.agent.bubble_widget)
+            await self.agent.bubble_timing.finish_stream(final_content, self.agent.bubble_widget)
 
         if final_response is None:
             final_response = {"role": "assistant", "content": final_content}
@@ -567,6 +568,7 @@ class ChatService:
             arguments = ToolCallParser.parse_arguments(tool_call)
             arguments["ws"] = ws
             arguments["bubble_widget"] = self.agent.bubble_widget
+            arguments["bubble_timing"] = self.agent.bubble_timing
             result = await self.agent.tool_registry.tools[function_name].execute(**arguments)
             self.live2d_conflict.note_tool_execution(function_name)
             self.agent.model.history.append(

@@ -175,6 +175,21 @@ class DisplayBubbleTextTool(Tool):
         if duration is None:
             duration = self.calculate_bubble_duration(text)
 
+        bubble_timing = kwargs.get("bubble_timing")
+        if bubble_timing is not None:
+            await bubble_timing.display_text(
+                text,
+                kwargs.get("ws"),
+                kwargs.get("bubble_widget"),
+                bubble_id=kwargs.get("id", 0),
+                text_frame_color=kwargs.get("textFrameColor", 0x000000),
+                text_color=kwargs.get("textColor", 0xFFFFFF),
+                duration=duration,
+                rotate_expression=self._expressions_enabled,
+                choices=kwargs.get("choices"),
+            )
+            return
+
         ws = kwargs.get("ws")
         if ws is not None and self._expressions_enabled:
             await self._send_next_expression(ws, kwargs.get("id", 0))

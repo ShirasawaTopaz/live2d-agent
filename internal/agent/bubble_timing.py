@@ -14,6 +14,8 @@ from internal.websocket.client import (
     send_message,
 )
 
+from .voice import GPTSoVITSVoiceClient, delete_file
+
 
 @dataclass(slots=True)
 class Live2dNextExpression:
@@ -50,12 +52,18 @@ class BubbleTimingController:
         time_provider: Callable[[], float] | None = None,
         sleep_func: Callable[[float], Awaitable[None]] | None = None,
         sender: Callable[[Client, int, int, object], Awaitable[None]] | None = None,
+        voice_client: GPTSoVITSVoiceClient | None = None,
     ) -> None:
         self._time_provider = time_provider or time.time
         self._sleep = sleep_func or asyncio.sleep
         self._sender = sender or send_message
+        self.voice_client = voice_client
+        self.audio_player: object | None = None
         self.last_bubble_time = 0.0
         self.last_bubble_duration = 0.0
+
+    def set_audio_player(self, audio_player: object | None) -> None:
+        self.audio_player = audio_player
 
     def wait_for_bubble_interval(self, current_duration: int) -> float:
         current_time = self._time_provider()
@@ -94,8 +102,10 @@ class BubbleTimingController:
         clear_widget: bool = True,
         show_widget: bool = True,
         rotate_expression: bool = True,
+        choices: list[str] | None = None,
     ) -> int:
         display_duration = duration if duration is not None else calculate_bubble_duration(text)
+        display_duration = await self._prepare_voice(text, display_duration)
 
         if rotate_expression:
             await self._send_next_expression(ws, bubble_id)
@@ -115,7 +125,7 @@ class BubbleTimingController:
         bubble_data = Live2dDisplayBubbleText(
             id=bubble_id,
             text=text,
-            choices=[],
+            choices=choices or [],
             textFrameColor=text_frame_color,
             textColor=text_color,
             duration=display_duration,
@@ -205,8 +215,25 @@ class BubbleTimingController:
     async def _send_next_expression(self, ws: Client, bubble_id: int = 0) -> None:
         await self._sender(ws, NextExpression, NextExpression, Live2dNextExpression(bubble_id))
 
-    def finish_stream(self, final_content: str, bubble_widget: BubbleWidget | None) -> None:
+    async def finish_stream(self, final_content: str, bubble_widget: BubbleWidget | None) -> None:
         final_duration = calculate_bubble_duration(final_content)
+        final_duration = await self._prepare_voice(final_content, final_duration)
         self.update_bubble_time(final_duration)
         if bubble_widget is not None:
             bubble_widget.show_with_duration(final_duration)
+
+    async def _prepare_voice(self, text: str, text_duration: int) -> int:
+        if self.voice_client is None:
+            return text_duration
+        if self.audio_player is None or not hasattr(self.audio_player, "play"):
+            return text_duration
+        voice_result = await self.voice_client.synthesize(text)
+        if voice_result is None:
+            return text_duration
+        played = self.audio_player.play(voice_result.file_path)
+        if played is False:
+            delete_file(voice_result.file_path)
+        audio_duration = voice_result.duration_ms
+        if audio_duration is None:
+            return text_duration
+        return max(text_duration, audio_duration)

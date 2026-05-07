@@ -182,5 +182,21 @@
         "max_concurrency": 4,
         "max_plan_depth": 10,
         "auto_save": true
+    },
+    "voice": {
+        "enabled": false,
+        "endpoint": "http://127.0.0.1:9880/tts",
+        "method": "GET",
+        "text_lang": "zh",
+        "ref_audio_path": "",
+        "prompt_text": "",
+        "prompt_lang": "zh",
+        "text_split_method": "cut5",
+        "batch_size": 1,
+        "speed_factor": 1.0,
+        "streaming_mode": false,
+        "timeout_seconds": 60,
+        "volume": 1.0,
+        "max_tts_chars": 500
     }
 }

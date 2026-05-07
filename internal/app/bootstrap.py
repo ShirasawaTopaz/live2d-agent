@@ -5,12 +5,13 @@ from importlib import import_module
 from typing import Any, TYPE_CHECKING
 
 from internal.agent.agent import create_agent
+from internal.agent.voice import QtAudioPlayer, cleanup_voice_temp_files
 from internal.config.config import Config
 from internal.prompt_manager import PromptManager
 from internal.websocket.reconnect import ExponentialBackoff, ReconnectingWebSocket
 
 if TYPE_CHECKING:
-    from internal.ui import BubbleWidget, FloatingInputBox
+    from internal.ui import BubbleWidget as BubbleWidgetType, FloatingInputBox as FloatingInputBoxType
 
 
 BubbleWidget: Any = None
@@ -26,8 +27,8 @@ class BootstrapContext:
     qt_app: Any
     websocket: ReconnectingWebSocket
     agent: Any
-    input_box: "FloatingInputBox"
-    bubble_widget: "BubbleWidget"
+    input_box: "FloatingInputBoxType"
+    bubble_widget: "BubbleWidgetType"
 
 
 async def bootstrap_application() -> BootstrapContext:
@@ -38,6 +39,8 @@ async def bootstrap_application() -> BootstrapContext:
     agent = create_runtime_agent(config)
     websocket = await create_websocket(config)
     input_box, bubble_widget = create_ui_components(agent)
+    if hasattr(qt_app, "aboutToQuit"):
+        qt_app.aboutToQuit.connect(lambda: dispose_voice_player(agent))
 
     logger.info("Live2oder 初始化完成")
     return BootstrapContext(
@@ -66,8 +69,10 @@ def create_qt_application() -> Any:
     return qt_app
 
 
-def create_ui_components(agent: Any) -> tuple["FloatingInputBox", "BubbleWidget"]:
+def create_ui_components(agent: Any) -> tuple["FloatingInputBoxType", "BubbleWidgetType"]:
     global BubbleWidget, FloatingInputBox
+
+    cleanup_voice_temp_files()
 
     if FloatingInputBox is None or BubbleWidget is None:
         ui_module = import_module("internal.ui")
@@ -78,7 +83,17 @@ def create_ui_components(agent: Any) -> tuple["FloatingInputBox", "BubbleWidget"
     bubble_widget = BubbleWidget()
     bubble_widget.set_theme(str(input_box._theme))
     agent.bubble_widget = bubble_widget
+    bubble_timing = getattr(agent, "bubble_timing", None)
+    if bubble_timing is not None and getattr(bubble_timing, "voice_client", None) is not None:
+        volume = getattr(bubble_timing.voice_client.config, "volume", 1.0)
+        bubble_timing.set_audio_player(QtAudioPlayer(volume=volume))
     return input_box, bubble_widget
+
+
+def dispose_voice_player(agent: Any) -> None:
+    audio_player = getattr(getattr(agent, "bubble_timing", None), "audio_player", None)
+    if audio_player is not None and hasattr(audio_player, "dispose"):
+        audio_player.dispose()
 
 
 def configure_websocket_callbacks(

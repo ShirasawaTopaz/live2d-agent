@@ -25,7 +25,7 @@ from PySide6.QtCore import (
     QEasingCurve,
     Property,
 )
-from PySide6.QtGui import QFont, QPainter, QColor, QPen, QLinearGradient, QBrush, QPainterPath, QFontMetrics
+from PySide6.QtGui import QFont, QPainter, QColor, QPen, QLinearGradient, QBrush, QFontMetrics
 from PySide6.QtGui import QTextLayout
 from PySide6.QtCore import QPointF
 
@@ -61,6 +61,7 @@ class BubbleWidget(QWidget):
         self.char_index: int = 0
         self._scroll_x: float = 0.0
         self._scroll_animation: Optional[QPropertyAnimation] = None
+        self._display_duration_ms: int = 15000
 
         # 打字机效果
         self._typewriter_timer = QTimer(self)
@@ -317,13 +318,8 @@ class BubbleWidget(QWidget):
         Args:
             duration_ms: 显示时长（毫秒），默认 15000ms (15秒)
         """
-        # 计算基于文本长度的显示时间
-        text_length = len(self.displayed_text)
-        # 基础时间 15秒，每增加10个字符增加5秒，最多60秒
-        dynamic_duration = 15000 + min(text_length * 500, 45000)
-        
-        # 使用传入的时长或动态计算的时长，取较大值
-        final_duration = max(duration_ms, dynamic_duration)
+        final_duration = max(1, duration_ms)
+        self._display_duration_ms = final_duration
         
         # 停止之前的动画和定时器
         if self._animation.state() == QPropertyAnimation.State.Running:
@@ -486,6 +482,9 @@ class BubbleWidget(QWidget):
         self._typewriter_timer.start(30)
 
     def _calculate_scroll_duration(self, scroll_distance: float) -> int:
+        if self._display_duration_ms > 0:
+            scroll_delay = min(3000, max(0, self._display_duration_ms // 3))
+            return max(1000, self._display_duration_ms - scroll_delay)
         char_count = len(self.displayed_text)
         # 调整滚动速度，确保长文本有足够阅读时间
         speed = 0.10 + 0.10 * math.log2(max(char_count, 1))
@@ -518,8 +517,8 @@ class BubbleWidget(QWidget):
                 self._scroll_animation.setStartValue(self._scroll_x)
                 self._scroll_animation.setEndValue(target_scroll_x)
                 
-                # 3秒延时后再启动滚动动画
-                QTimer.singleShot(3000, self._scroll_animation.start)
+                scroll_delay = min(3000, max(0, self._display_duration_ms // 3))
+                QTimer.singleShot(scroll_delay, self._scroll_animation.start)
         else:
             if self._scroll_x != 0:
                 self._scroll_x = 0
