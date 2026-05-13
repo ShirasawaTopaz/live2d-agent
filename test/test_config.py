@@ -23,7 +23,9 @@ def test_load_missing_config_file_returns_defaults(tmp_path):
     assert config.live2dExpressions.enabled is True
     assert config.live2dExpressions.default_expression == "EXP_NEUTRAL_01"
     assert config.voice.enabled is False
+    assert config.voice.auto_start is False
     assert config.voice.endpoint == "http://127.0.0.1:9880/tts"
+    assert config.voice.startup_command == ""
     assert config.memory is not None
     assert config.sandbox is not None
 
@@ -34,6 +36,41 @@ def test_load_empty_config_file_returns_defaults(tmp_path):
     assert config.live2dSocket == "ws://127.0.0.1:10086/api"
     assert config.models == []
     assert config.live2dExpressions.fallback_policy == "neutral"
+
+
+def test_voice_config_round_trips_with_new_fields(tmp_path):
+    config_data = {
+        "models": [
+            {
+                "name": "single-model",
+                "model": "model-a",
+                "type": "ollama",
+                "system_prompt": "hello",
+                "default": True,
+            }
+        ],
+        "voice": {
+            "enabled": True,
+            "auto_start": True,
+            "endpoint": "http://127.0.0.1:9880/tts",
+            "method": "POST",
+            "startup_command": "python serve.py",
+            "startup_cwd": "D:/gpt-sovits",
+            "startup_timeout_seconds": 45,
+            "health_check_timeout_seconds": 5,
+        },
+    }
+
+    config = load_config(tmp_path, json.dumps(config_data))
+
+    assert config.voice.enabled is True
+    assert config.voice.auto_start is True
+    assert config.voice.method == "POST"
+    assert config.voice.startup_command == "python serve.py"
+    assert config.voice.startup_cwd == "D:/gpt-sovits"
+    assert config.voice.startup_timeout_seconds == 45
+    assert config.voice.health_check_timeout_seconds == 5
+    assert config.to_dict()["voice"]["auto_start"] is True
 
 
 def test_parse_config_content_returns_defaults_for_blank_content():

@@ -270,8 +270,13 @@
     },
     "voice": {
         "enabled": false,
+        "auto_start": false,
         "endpoint": "http://127.0.0.1:9880/tts",
         "method": "GET",
+        "startup_command": "",
+        "startup_cwd": "",
+        "startup_timeout_seconds": 30,
+        "health_check_timeout_seconds": 3,
         "text_lang": "zh",
         "ref_audio_path": "",
         "prompt_text": "",

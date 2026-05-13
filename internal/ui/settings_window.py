@@ -92,6 +92,7 @@ class SettingsWindow(QWidget):
         self._build_sandbox_tab()
         self._build_planning_tab()
         self._build_rag_tab()
+        self._build_voice_tab()
 
         button_row = QHBoxLayout()
         button_row.addStretch()
@@ -495,6 +496,73 @@ class SettingsWindow(QWidget):
 
         self.tabs.addTab(tab, "RAG")
 
+    def _build_voice_tab(self) -> None:
+        tab = QWidget(self)
+        form = QFormLayout(tab)
+        form.setContentsMargins(16, 16, 16, 16)
+        form.setSpacing(8)
+
+        self.voice_enabled_check = QCheckBox(tab)
+        form.addRow("enabled", self.voice_enabled_check)
+
+        self.voice_auto_start_check = QCheckBox(tab)
+        form.addRow("auto_start", self.voice_auto_start_check)
+
+        self.voice_endpoint_edit = QLineEdit(tab)
+        form.addRow("endpoint", self.voice_endpoint_edit)
+
+        self.voice_method_combo = QComboBox(tab)
+        self.voice_method_combo.addItems(["GET", "POST"])
+        form.addRow("method", self.voice_method_combo)
+
+        self.voice_startup_command_edit = QLineEdit(tab)
+        form.addRow("startup_command", self.voice_startup_command_edit)
+
+        self.voice_startup_cwd_edit = QLineEdit(tab)
+        form.addRow("startup_cwd", self.voice_startup_cwd_edit)
+
+        self.voice_startup_timeout_spin = self._create_int_spinbox(tab, 1, 3600)
+        form.addRow("startup_timeout_seconds", self.voice_startup_timeout_spin)
+
+        self.voice_health_timeout_spin = self._create_int_spinbox(tab, 1, 3600)
+        form.addRow("health_check_timeout_seconds", self.voice_health_timeout_spin)
+
+        self.voice_text_lang_edit = QLineEdit(tab)
+        form.addRow("text_lang", self.voice_text_lang_edit)
+
+        self.voice_ref_audio_edit = QLineEdit(tab)
+        form.addRow("ref_audio_path", self.voice_ref_audio_edit)
+
+        self.voice_prompt_text_edit = QPlainTextEdit(tab)
+        self.voice_prompt_text_edit.setMinimumHeight(90)
+        form.addRow("prompt_text", self.voice_prompt_text_edit)
+
+        self.voice_prompt_lang_edit = QLineEdit(tab)
+        form.addRow("prompt_lang", self.voice_prompt_lang_edit)
+
+        self.voice_split_method_edit = QLineEdit(tab)
+        form.addRow("text_split_method", self.voice_split_method_edit)
+
+        self.voice_batch_size_spin = self._create_int_spinbox(tab, 1, 1000)
+        form.addRow("batch_size", self.voice_batch_size_spin)
+
+        self.voice_speed_factor_edit = QLineEdit(tab)
+        form.addRow("speed_factor", self.voice_speed_factor_edit)
+
+        self.voice_streaming_check = QCheckBox(tab)
+        form.addRow("streaming_mode", self.voice_streaming_check)
+
+        self.voice_timeout_spin = self._create_int_spinbox(tab, 1, 3600)
+        form.addRow("timeout_seconds", self.voice_timeout_spin)
+
+        self.voice_volume_edit = QLineEdit(tab)
+        form.addRow("volume", self.voice_volume_edit)
+
+        self.voice_max_chars_spin = self._create_int_spinbox(tab, 1, 100000)
+        form.addRow("max_tts_chars", self.voice_max_chars_spin)
+
+        self.tabs.addTab(tab, "Voice")
+
     def _load_from_disk(self) -> None:
         try:
             self._raw_config, self._config = load_with_raw(self._config_path)
@@ -512,6 +580,7 @@ class SettingsWindow(QWidget):
             self._load_sandbox_to_ui()
             self._load_planning_to_ui()
             self._load_rag_to_ui()
+            self._load_voice_to_ui()
         finally:
             self._syncing_model_editor = False
         self._set_status("Configuration loaded.", is_error=False)
@@ -612,6 +681,28 @@ class SettingsWindow(QWidget):
         self.rag_chunk_size_spin.setValue(int(rag.chunk_size))
         self.rag_chunk_overlap_spin.setValue(int(rag.chunk_overlap))
         self.rag_top_k_spin.setValue(int(rag.top_k))
+
+    def _load_voice_to_ui(self) -> None:
+        voice = self._config.voice
+        self.voice_enabled_check.setChecked(bool(voice.enabled))
+        self.voice_auto_start_check.setChecked(bool(voice.auto_start))
+        self.voice_endpoint_edit.setText(str(voice.endpoint))
+        self.voice_method_combo.setCurrentText(str(voice.method))
+        self.voice_startup_command_edit.setText(str(voice.startup_command))
+        self.voice_startup_cwd_edit.setText(str(voice.startup_cwd))
+        self.voice_startup_timeout_spin.setValue(int(voice.startup_timeout_seconds))
+        self.voice_health_timeout_spin.setValue(int(voice.health_check_timeout_seconds))
+        self.voice_text_lang_edit.setText(str(voice.text_lang))
+        self.voice_ref_audio_edit.setText(str(voice.ref_audio_path))
+        self.voice_prompt_text_edit.setPlainText(str(voice.prompt_text))
+        self.voice_prompt_lang_edit.setText(str(voice.prompt_lang))
+        self.voice_split_method_edit.setText(str(voice.text_split_method))
+        self.voice_batch_size_spin.setValue(int(voice.batch_size))
+        self.voice_speed_factor_edit.setText(str(voice.speed_factor))
+        self.voice_streaming_check.setChecked(bool(voice.streaming_mode))
+        self.voice_timeout_spin.setValue(int(voice.timeout_seconds))
+        self.voice_volume_edit.setText(str(voice.volume))
+        self.voice_max_chars_spin.setValue(int(voice.max_tts_chars))
 
     def _on_model_selected(self, row: int) -> None:
         if self._syncing_model_editor:
@@ -876,6 +967,8 @@ class SettingsWindow(QWidget):
             self.tabs.setCurrentIndex(4)
         elif field_lower.startswith("rag"):
             self.tabs.setCurrentIndex(5)
+        elif field_lower.startswith("voice"):
+            self.tabs.setCurrentIndex(6)
 
     def _clear_error_styles(self) -> None:
         widgets = [
@@ -917,6 +1010,11 @@ class SettingsWindow(QWidget):
             self.rag_chunk_size_spin,
             self.rag_chunk_overlap_spin,
             self.rag_top_k_spin,
+            self.voice_startup_timeout_spin,
+            self.voice_health_timeout_spin,
+            self.voice_batch_size_spin,
+            self.voice_timeout_spin,
+            self.voice_max_chars_spin,
         ]
         for widget in widgets:
             widget.setStyleSheet("")
@@ -1099,6 +1197,28 @@ class SettingsWindow(QWidget):
             "top_k": int(self.rag_top_k_spin.value()),
         }
 
+        voice = {
+            "enabled": self.voice_enabled_check.isChecked(),
+            "auto_start": self.voice_auto_start_check.isChecked(),
+            "endpoint": self.voice_endpoint_edit.text().strip(),
+            "method": self.voice_method_combo.currentText(),
+            "startup_command": self.voice_startup_command_edit.text().strip(),
+            "startup_cwd": self.voice_startup_cwd_edit.text().strip(),
+            "startup_timeout_seconds": int(self.voice_startup_timeout_spin.value()),
+            "health_check_timeout_seconds": int(self.voice_health_timeout_spin.value()),
+            "text_lang": self.voice_text_lang_edit.text().strip(),
+            "ref_audio_path": self.voice_ref_audio_edit.text().strip(),
+            "prompt_text": self.voice_prompt_text_edit.toPlainText().strip(),
+            "prompt_lang": self.voice_prompt_lang_edit.text().strip(),
+            "text_split_method": self.voice_split_method_edit.text().strip(),
+            "batch_size": int(self.voice_batch_size_spin.value()),
+            "speed_factor": self._parse_float_text(self.voice_speed_factor_edit.text(), 1.0),
+            "streaming_mode": self.voice_streaming_check.isChecked(),
+            "timeout_seconds": int(self.voice_timeout_spin.value()),
+            "volume": self._parse_float_text(self.voice_volume_edit.text(), 1.0),
+            "max_tts_chars": int(self.voice_max_chars_spin.value()),
+        }
+
         return {
             "live2dSocket": self.live2d_socket_edit.text().strip(),
             "models": [copy.deepcopy(model) for model in self._models_raw],
@@ -1106,6 +1226,7 @@ class SettingsWindow(QWidget):
             "sandbox": sandbox,
             "planning": planning,
             "rag": rag,
+            "voice": voice,
         }
 
     def _set_status(self, message: str, *, is_error: bool) -> None:
@@ -1129,6 +1250,16 @@ class SettingsWindow(QWidget):
             except ValueError:
                 values.append(item)
         return values
+
+    @staticmethod
+    def _parse_float_text(text: str, default: float) -> float | str:
+        value = text.strip()
+        if not value:
+            return default
+        try:
+            return float(value)
+        except ValueError:
+            return value
 
     @staticmethod
     def _create_nullable_bool_combo(parent: QWidget) -> QComboBox:

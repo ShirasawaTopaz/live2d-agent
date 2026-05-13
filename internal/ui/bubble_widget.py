@@ -13,6 +13,7 @@
 
 import math
 import random
+from collections.abc import Callable
 from typing import Optional
 
 from PySide6.QtWidgets import QWidget, QApplication
@@ -61,6 +62,10 @@ class BubbleWidget(QWidget):
         self.char_index: int = 0
         self._scroll_x: float = 0.0
         self._scroll_animation: Optional[QPropertyAnimation] = None
+        self._scroll_target_x: float = 0.0
+        self._audio_position_provider: Callable[[], int | None] | None = None
+        self._audio_duration_provider: Callable[[], int | None] | None = None
+        self._audio_scroll_duration_ms: int | None = None
         self._display_duration_ms: int = 15000
 
         # 打字机效果
@@ -93,6 +98,10 @@ class BubbleWidget(QWidget):
 
         # 打字机定时器
         self._typewriter_timer.timeout.connect(self._on_typewriter_tick)
+
+        self._audio_scroll_timer = QTimer(self)
+        self._audio_scroll_timer.setInterval(33)
+        self._audio_scroll_timer.timeout.connect(self._sync_scroll_to_audio)
 
         # 主题
         saved_theme = self._settings.value("theme", "dark")
@@ -269,6 +278,7 @@ class BubbleWidget(QWidget):
         # 停止任何正在进行的滚动动画
         if self._scroll_animation is not None and self._scroll_animation.state() == QPropertyAnimation.State.Running:
             self._scroll_animation.stop()
+        self.clear_audio_scroll_sync()
 
         # 清空所有文本状态
         self._content = ""
@@ -276,6 +286,7 @@ class BubbleWidget(QWidget):
         self.full_text = ""
         self.char_index = 0
         self._scroll_x = 0.0
+        self._scroll_target_x = 0.0
         # 重置大小为最小高度
         self.adjust_size_to_content()
         self.update()
@@ -306,9 +317,11 @@ class BubbleWidget(QWidget):
             self.show()
 
         self._scroll_x = 0.0
+        self._scroll_target_x = 0.0
         # Stop any pending scroll animation when setting new text
         if self._scroll_animation is not None and self._scroll_animation.state() == QPropertyAnimation.State.Running:
             self._scroll_animation.stop()
+        self.clear_audio_scroll_sync()
         self.update_text_wrap()
         self.update()
 
@@ -343,6 +356,48 @@ class BubbleWidget(QWidget):
 
         # 重新启动定时器
         self._hide_timer.start(final_duration)
+
+    def sync_scroll_to_audio(
+        self,
+        position_provider: Callable[[], int | None],
+        duration_provider: Callable[[], int | None] | None = None,
+        *,
+        duration_ms: int | None = None,
+    ) -> None:
+        self._audio_position_provider = position_provider
+        self._audio_duration_provider = duration_provider
+        self._audio_scroll_duration_ms = duration_ms
+        if self._scroll_animation is not None and self._scroll_animation.state() == QPropertyAnimation.State.Running:
+            self._scroll_animation.stop()
+        self.update_text_wrap()
+        if self._scroll_target_x == 0:
+            return
+        self._sync_scroll_to_audio()
+        self._audio_scroll_timer.start()
+
+    def clear_audio_scroll_sync(self) -> None:
+        if self._audio_scroll_timer.isActive():
+            self._audio_scroll_timer.stop()
+        self._audio_position_provider = None
+        self._audio_duration_provider = None
+        self._audio_scroll_duration_ms = None
+
+    def _sync_scroll_to_audio(self) -> None:
+        if self._audio_position_provider is None:
+            self.clear_audio_scroll_sync()
+            return
+
+        position_ms = self._audio_position_provider()
+        duration_ms = self._audio_scroll_duration_ms
+        if self._audio_duration_provider is not None:
+            duration_ms = self._audio_duration_provider() or duration_ms
+        if position_ms is None or duration_ms is None or duration_ms <= 0:
+            return
+
+        progress = max(0.0, min(float(position_ms) / float(duration_ms), 1.0))
+        self.scroll_x = self._scroll_target_x * progress
+        if progress >= 1.0:
+            self.clear_audio_scroll_sync()
 
     def fade_out_and_hide(self):
         """开始淡出动画并隐藏"""
@@ -477,6 +532,8 @@ class BubbleWidget(QWidget):
         self.char_index = 0
         self.displayed_text = ""
         self._scroll_x = 0
+        self._scroll_target_x = 0
+        self.clear_audio_scroll_sync()
 
         # 启动定时器，第一个字符使用基础间隔
         self._typewriter_timer.start(30)
@@ -506,6 +563,11 @@ class BubbleWidget(QWidget):
             cursor_x = self._padding + text_width
             if cursor_x > self.width() - self._padding:
                 target_scroll_x = -(cursor_x - self.width() + self._padding)
+                self._scroll_target_x = target_scroll_x
+                if self._audio_position_provider is not None:
+                    self._sync_scroll_to_audio()
+                    self.adjust_size_to_content()
+                    return
                 
                 # 先不滚动，让用户可以看见前面几个字符，3秒后再开始滚动
                 self._scroll_animation = QPropertyAnimation(self, b"scroll_x")
@@ -520,6 +582,7 @@ class BubbleWidget(QWidget):
                 scroll_delay = min(3000, max(0, self._display_duration_ms // 3))
                 QTimer.singleShot(scroll_delay, self._scroll_animation.start)
         else:
+            self._scroll_target_x = 0.0
             if self._scroll_x != 0:
                 self._scroll_x = 0
                 # Stop any pending scroll animation if text is now short enough

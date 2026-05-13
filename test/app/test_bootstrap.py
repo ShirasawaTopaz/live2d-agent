@@ -158,6 +158,10 @@ def test_bootstrap_application_uses_split_helpers(monkeypatch) -> None:
         assert received_config is config
         return agent
 
+    async def fake_warmup_voice_client(received_agent):
+        calls.append("warmup")
+        assert received_agent is agent
+
     def fake_create_ui_components(received_agent):
         calls.append("ui")
         assert received_agent is agent
@@ -167,6 +171,7 @@ def test_bootstrap_application_uses_split_helpers(monkeypatch) -> None:
     monkeypatch.setattr(bootstrap, "create_qt_application", fake_create_qt_application)
     monkeypatch.setattr(bootstrap, "create_websocket", fake_create_websocket)
     monkeypatch.setattr(bootstrap, "create_runtime_agent", fake_create_runtime_agent)
+    monkeypatch.setattr(bootstrap, "warmup_voice_client", fake_warmup_voice_client)
     monkeypatch.setattr(bootstrap, "create_ui_components", fake_create_ui_components)
 
     async def scenario() -> None:
@@ -178,7 +183,7 @@ def test_bootstrap_application_uses_split_helpers(monkeypatch) -> None:
         assert context.agent is agent
         assert context.input_box is input_box
         assert context.bubble_widget is bubble_widget
-        assert calls == ["load", "qt", "agent", "websocket", "ui"]
+        assert calls == ["load", "qt", "agent", "warmup", "websocket", "ui"]
 
     asyncio.run(scenario())
 
@@ -219,5 +224,12 @@ def test_bootstrap_application_stops_before_websocket_when_agent_creation_fails(
             raise AssertionError("ValueError not raised")
 
         assert calls == ["load", "qt", "agent"]
+
+    asyncio.run(scenario())
+
+
+def test_warmup_voice_client_ignores_missing_client() -> None:
+    async def scenario() -> None:
+        await bootstrap.warmup_voice_client(SimpleNamespace())
 
     asyncio.run(scenario())

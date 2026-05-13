@@ -105,7 +105,9 @@ class BubbleTimingController:
         choices: list[str] | None = None,
     ) -> int:
         display_duration = duration if duration is not None else calculate_bubble_duration(text)
-        display_duration = await self._prepare_voice(text, display_duration)
+
+        voice_result = await self._synthesize_voice(text)
+        display_duration = self._voice_duration(voice_result, display_duration)
 
         if rotate_expression:
             await self._send_next_expression(ws, bubble_id)
@@ -118,9 +120,15 @@ class BubbleTimingController:
                 bubble_widget.show_with_duration(display_duration)
             else:
                 bubble_widget.show()
+            self._sync_widget_scroll_to_audio(bubble_widget, voice_result, display_duration)
+            if voice_result is not None:
+                self._start_voice_playback(voice_result)
             if update_state:
                 self.update_bubble_time(display_duration)
             return display_duration
+
+        if voice_result is not None:
+            self._start_voice_playback(voice_result)
 
         bubble_data = Live2dDisplayBubbleText(
             id=bubble_id,
@@ -217,23 +225,60 @@ class BubbleTimingController:
 
     async def finish_stream(self, final_content: str, bubble_widget: BubbleWidget | None) -> None:
         final_duration = calculate_bubble_duration(final_content)
-        final_duration = await self._prepare_voice(final_content, final_duration)
+
+        voice_result = await self._synthesize_voice(final_content)
+        final_duration = self._voice_duration(voice_result, final_duration)
+
         self.update_bubble_time(final_duration)
         if bubble_widget is not None:
             bubble_widget.show_with_duration(final_duration)
+            self._sync_widget_scroll_to_audio(bubble_widget, voice_result, final_duration)
+            if voice_result is not None:
+                self._start_voice_playback(voice_result)
 
-    async def _prepare_voice(self, text: str, text_duration: int) -> int:
+    async def _synthesize_voice(self, text: str) -> object | None:
+        """Synthesize voice from text. Returns VoiceResult or None. Does NOT start playback."""
         if self.voice_client is None:
-            return text_duration
+            return None
         if self.audio_player is None or not hasattr(self.audio_player, "play"):
-            return text_duration
-        voice_result = await self.voice_client.synthesize(text)
+            return None
+        return await self.voice_client.synthesize(text)
+
+    @staticmethod
+    def _voice_duration(voice_result: object | None, text_duration: int) -> int:
+        """Compute effective display duration considering voice audio length."""
         if voice_result is None:
             return text_duration
-        played = self.audio_player.play(voice_result.file_path)
-        if played is False:
-            delete_file(voice_result.file_path)
-        audio_duration = voice_result.duration_ms
+        audio_duration = getattr(voice_result, "duration_ms", None)
         if audio_duration is None:
             return text_duration
         return max(text_duration, audio_duration)
+
+    def _start_voice_playback(self, voice_result: object) -> bool:
+        """Start playing synthesized voice audio. Cleans up file on failure."""
+        if self.audio_player is None or not hasattr(self.audio_player, "play"):
+            return False
+        played = self.audio_player.play(voice_result.file_path)
+        if played is False:
+            delete_file(voice_result.file_path)
+        return played
+
+    def _sync_widget_scroll_to_audio(
+        self,
+        bubble_widget: BubbleWidget | None,
+        voice_result: object | None,
+        display_duration: int,
+    ) -> None:
+        if bubble_widget is None or voice_result is None:
+            return
+        if self.audio_player is None or not hasattr(self.audio_player, "position_ms"):
+            return
+        if not hasattr(bubble_widget, "sync_scroll_to_audio"):
+            return
+        duration_ms = getattr(voice_result, "duration_ms", None) or display_duration
+        duration_provider = getattr(self.audio_player, "duration_ms", None)
+        bubble_widget.sync_scroll_to_audio(
+            self.audio_player.position_ms,
+            duration_provider if callable(duration_provider) else None,
+            duration_ms=duration_ms,
+        )

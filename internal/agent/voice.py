@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import logging
+import asyncio
+import subprocess
 import tempfile
 import wave
 from dataclasses import dataclass
 from pathlib import Path
+import socket
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 import aiohttp
 
@@ -24,9 +28,47 @@ class GPTSoVITSVoiceClient:
 
     def __init__(self, config: VoiceConfig) -> None:
         self.config = config
+        self._ready: bool | None = None
+        self._startup_process: subprocess.Popen[str] | None = None
+
+    async def ensure_ready(self) -> bool:
+        if not self.config.enabled:
+            self._ready = False
+            return False
+
+        if self._ready is True and await self._is_endpoint_ready():
+            return True
+
+        if await self._is_endpoint_ready():
+            self._ready = True
+            return True
+
+        if not self.config.auto_start:
+            self._ready = False
+            return False
+
+        if self._startup_process is not None and self._startup_process.poll() is None:
+            logging.warning("GPT-SoVITs startup is still running but endpoint is unavailable")
+            self._ready = False
+            return False
+
+        if not self._start_service():
+            self._ready = False
+            return False
+
+        deadline = self._current_time() + max(1, int(self.config.startup_timeout_seconds))
+        while self._current_time() < deadline:
+            if await self._is_endpoint_ready():
+                self._ready = True
+                return True
+            await self._sleep(0.5)
+
+        logging.warning("GPT-SoVITs startup timed out")
+        self._ready = False
+        return False
 
     async def synthesize(self, text: str) -> VoiceResult | None:
-        if not self.config.enabled:
+        if not await self.ensure_ready():
             return None
 
         clean_text = text.strip()
@@ -60,7 +102,53 @@ class GPTSoVITSVoiceClient:
                     return self._save_audio(audio_bytes, response.headers.get("Content-Type", ""))
         except Exception as exc:
             logging.warning("GPT-SoVITs voice synthesis failed: %s", exc, exc_info=True)
+            self._ready = False
             return None
+
+    async def _is_endpoint_ready(self) -> bool:
+        parsed = urlparse(self.config.endpoint)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            return False
+
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        timeout = max(1, int(self.config.health_check_timeout_seconds))
+        return await asyncio.to_thread(self._check_tcp_port, parsed.hostname, port, timeout)
+
+    def _start_service(self) -> bool:
+        command = self.config.startup_command.strip()
+        if not command:
+            logging.warning("GPT-SoVITs auto_start is enabled but startup_command is empty")
+            return False
+
+        try:
+            self._startup_process = subprocess.Popen(
+                command,
+                cwd=self.config.startup_cwd.strip() or None,
+                shell=True,
+            )
+            logging.info("Started GPT-SoVITs with command: %s", command)
+            return True
+        except Exception as exc:
+            logging.warning("Failed to start GPT-SoVITs: %s", exc, exc_info=True)
+            return False
+
+    @staticmethod
+    def _current_time() -> float:
+        import time
+
+        return time.monotonic()
+
+    @staticmethod
+    async def _sleep(seconds: float) -> None:
+        await asyncio.sleep(seconds)
+
+    @staticmethod
+    def _check_tcp_port(host: str, port: int, timeout: int) -> bool:
+        try:
+            with socket.create_connection((host, port), timeout=timeout):
+                return True
+        except Exception:
+            return False
 
     def _build_payload(self, text: str) -> dict[str, Any]:
         return {
@@ -144,6 +232,23 @@ class QtAudioPlayer:
             self._current_file = None
             delete_file(file_path)
             return False
+
+    def position_ms(self) -> int | None:
+        if self._player is None or not hasattr(self._player, "position"):
+            return None
+        try:
+            return int(self._player.position())
+        except Exception:
+            return None
+
+    def duration_ms(self) -> int | None:
+        if self._player is None or not hasattr(self._player, "duration"):
+            return None
+        try:
+            duration = int(self._player.duration())
+        except Exception:
+            return None
+        return duration if duration > 0 else None
 
     def stop(self) -> None:
         if self._player is not None:

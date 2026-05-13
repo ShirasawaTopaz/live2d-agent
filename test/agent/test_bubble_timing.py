@@ -13,6 +13,7 @@ class FakeBubbleWidget:
     def __init__(self):
         self.text = ""
         self.duration = None
+        self.audio_sync = None
 
     def clear(self):
         return None
@@ -22,6 +23,9 @@ class FakeBubbleWidget:
 
     def show_with_duration(self, duration):
         self.duration = duration
+
+    def sync_scroll_to_audio(self, position_provider, duration_provider=None, *, duration_ms=None):
+        self.audio_sync = (position_provider, duration_provider, duration_ms)
 
 
 class FakeVoiceClient:
@@ -34,13 +38,35 @@ class FakeVoiceClient:
         return self.result
 
 
+class UnavailableVoiceClient:
+    def __init__(self):
+        self.ensure_ready_calls = 0
+        self.synthesize_calls = 0
+
+    async def ensure_ready(self):
+        self.ensure_ready_calls += 1
+        return False
+
+    async def synthesize(self, text):
+        self.synthesize_calls += 1
+        return None
+
+
 class FakeAudioPlayer:
     def __init__(self):
         self.played = []
+        self.position = 0
+        self.duration = 0
 
     def play(self, file_path):
         self.played.append(file_path)
         return True
+
+    def position_ms(self):
+        return self.position
+
+    def duration_ms(self):
+        return self.duration or None
 
 
 class RejectingAudioPlayer:
@@ -170,10 +196,31 @@ async def _run_display_text_uses_voice_duration_for_qt_bubble():
     assert controller.last_bubble_duration == 9000
     assert voice_client.texts == ["hello"]
     assert audio_player.played == ["voice.wav"]
+    assert widget.audio_sync is not None
+    assert widget.audio_sync[0]() == audio_player.position_ms()
+    assert widget.audio_sync[2] == 9000
 
 
 def test_display_text_uses_voice_duration_for_qt_bubble():
     asyncio.run(_run_display_text_uses_voice_duration_for_qt_bubble())
+
+
+async def _run_display_text_skips_playback_when_voice_is_unavailable():
+    voice_client = UnavailableVoiceClient()
+    widget = FakeBubbleWidget()
+    controller = BubbleTimingController(voice_client=voice_client)
+    controller.set_audio_player(FakeAudioPlayer())
+
+    duration = await controller.display_text("hello", object(), widget, duration=5000, rotate_expression=False)
+
+    assert duration == 5000
+    assert voice_client.ensure_ready_calls == 0
+    assert voice_client.synthesize_calls == 1
+    assert widget.audio_sync is None
+
+
+def test_display_text_skips_playback_when_voice_is_unavailable():
+    asyncio.run(_run_display_text_skips_playback_when_voice_is_unavailable())
 
 
 async def _run_display_text_falls_back_when_voice_fails():
@@ -234,6 +281,7 @@ async def _run_display_text_deletes_voice_file_when_player_rejects(file_path: st
     await controller.display_text("hello", object(), widget, duration=5000, rotate_expression=False)
 
     assert not Path(file_path).exists()
+    assert widget.audio_sync is None
 
 
 def test_display_text_deletes_voice_file_when_player_rejects(tmp_path):
@@ -253,3 +301,111 @@ def test_cleanup_voice_temp_files_deletes_only_voice_files(tmp_path, monkeypatch
     assert voice.cleanup_voice_temp_files() == 1
     assert not voice_file.exists()
     assert other_file.exists()
+
+
+async def _run_display_text_establishes_sync_before_playback():
+    call_order = []
+
+    class SpyBubbleWidget:
+        def __init__(self):
+            self.text = ""
+            self.duration = None
+            self.audio_sync = None
+
+        def clear(self):
+            return None
+
+        def set_text(self, text):
+            self.text = text
+
+        def show_with_duration(self, duration):
+            self.duration = duration
+
+        def show(self):
+            pass
+
+        def sync_scroll_to_audio(self, position_provider, duration_provider=None, *, duration_ms=None):
+            call_order.append("sync")
+            self.audio_sync = (position_provider, duration_provider, duration_ms)
+
+    class SpyAudioPlayer:
+        def __init__(self):
+            self.played = []
+            self.position = 0
+            self.duration = 0
+
+        def play(self, file_path):
+            call_order.append("play")
+            self.played.append(file_path)
+            return True
+
+        def position_ms(self):
+            return self.position
+
+        def duration_ms(self):
+            return self.duration or None
+
+    voice_client = FakeVoiceClient(VoiceResult(file_path="voice.wav", duration_ms=9000))
+    widget = SpyBubbleWidget()
+    audio_player = SpyAudioPlayer()
+    controller = BubbleTimingController(time_provider=lambda: 7.0, voice_client=voice_client)
+    controller.set_audio_player(audio_player)
+
+    await controller.display_text("hello", object(), widget, duration=5000, rotate_expression=False)
+
+    assert call_order == ["sync", "play"]
+    assert widget.audio_sync is not None
+    assert len(audio_player.played) == 1
+
+
+def test_display_text_establishes_sync_before_playback():
+    asyncio.run(_run_display_text_establishes_sync_before_playback())
+
+
+async def _run_finish_stream_establishes_sync_before_playback():
+    call_order = []
+
+    class SpyBubbleWidget:
+        def __init__(self):
+            self.duration = None
+            self.audio_sync = None
+
+        def show_with_duration(self, duration):
+            self.duration = duration
+
+        def sync_scroll_to_audio(self, position_provider, duration_provider=None, *, duration_ms=None):
+            call_order.append("sync")
+            self.audio_sync = (position_provider, duration_provider, duration_ms)
+
+    class SpyAudioPlayer:
+        def __init__(self):
+            self.played = []
+            self.position = 0
+            self.duration = 0
+
+        def play(self, file_path):
+            call_order.append("play")
+            self.played.append(file_path)
+            return True
+
+        def position_ms(self):
+            return self.position
+
+        def duration_ms(self):
+            return self.duration or None
+
+    voice_client = FakeVoiceClient(VoiceResult(file_path="voice.wav", duration_ms=9000))
+    widget = SpyBubbleWidget()
+    audio_player = SpyAudioPlayer()
+    controller = BubbleTimingController(time_provider=lambda: 7.0, voice_client=voice_client)
+    controller.set_audio_player(audio_player)
+
+    await controller.finish_stream("hello world", widget)
+
+    assert call_order == ["sync", "play"]
+    assert widget.audio_sync is not None
+    assert len(audio_player.played) == 1
+
+
+def test_finish_stream_establishes_sync_before_playback():
+    asyncio.run(_run_finish_stream_establishes_sync_before_playback())

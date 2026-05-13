@@ -37,6 +37,7 @@ async def bootstrap_application() -> BootstrapContext:
     config = await load_startup_resources()
     qt_app = create_qt_application()
     agent = create_runtime_agent(config)
+    await warmup_voice_client(agent)
     websocket = await create_websocket(config)
     input_box, bubble_widget = create_ui_components(agent)
     if hasattr(qt_app, "aboutToQuit"):
@@ -94,6 +95,17 @@ def dispose_voice_player(agent: Any) -> None:
     audio_player = getattr(getattr(agent, "bubble_timing", None), "audio_player", None)
     if audio_player is not None and hasattr(audio_player, "dispose"):
         audio_player.dispose()
+
+
+async def warmup_voice_client(agent: Any) -> None:
+    voice_client = getattr(getattr(agent, "bubble_timing", None), "voice_client", None)
+    if voice_client is None or not hasattr(voice_client, "ensure_ready"):
+        return
+
+    try:
+        await voice_client.ensure_ready()
+    except Exception as exc:
+        logger.warning("GPT-SoVITs warmup failed: %s", exc, exc_info=True)
 
 
 def configure_websocket_callbacks(

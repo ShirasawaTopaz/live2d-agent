@@ -108,6 +108,34 @@ def test_validate_config_dict_rejects_invalid_memory_mcp_values():
     assert "memory.remote.timeout" in fields
 
 
+def test_validate_config_dict_rejects_invalid_voice_values():
+    data = {
+        "live2dSocket": "ws://valid",
+        "models": [
+            {
+                "name": "ok",
+                "model": "m",
+                "type": "ollama",
+                "system_prompt": "x",
+                "temperature": 0.7,
+                "options": {},
+            }
+        ],
+        "voice": {
+            "speed_factor": "bad",
+            "volume": "bad",
+            "startup_timeout_seconds": 0,
+        },
+    }
+
+    errors = validate_config_dict(data)
+    fields = {error.field for error in errors}
+
+    assert "voice.speed_factor" in fields
+    assert "voice.volume" in fields
+    assert "voice.startup_timeout_seconds" in fields
+
+
 def test_load_with_raw_returns_raw_and_config(tmp_path):
     config_path = tmp_path / "config.json"
     config_path.write_text(

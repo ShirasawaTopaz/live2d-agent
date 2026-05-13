@@ -17,6 +17,7 @@ KNOWN_CONFIG_KEYS = (
     "sandbox",
     "planning",
     "rag",
+    "voice",
 )
 
 
@@ -125,6 +126,12 @@ def validate_config_dict(data: dict[str, Any]) -> list[ValidationError]:
     else:
         errors.extend(_validate_rag(rag))
 
+    voice = data.get("voice")
+    if voice is not None and not isinstance(voice, dict):
+        errors.append(ValidationError(field="voice", message="voice must be an object."))
+    else:
+        errors.extend(_validate_voice(voice))
+
     return errors
 
 
@@ -154,7 +161,7 @@ def decide_runtime_apply(old_config: Config, new_config: Config) -> RuntimeApply
 
     non_hot_changed = any(
         old_data.get(section) != new_data.get(section)
-        for section in ("live2dExpressions", "memory", "sandbox", "planning", "rag")
+        for section in ("live2dExpressions", "memory", "sandbox", "planning", "rag", "voice")
     )
     models_changed = old_data.get("models") != new_data.get("models")
     requires_restart = non_hot_changed or (models_changed and not default_model_changed)
@@ -410,6 +417,25 @@ def _validate_rag(rag: dict[str, Any] | None) -> list[ValidationError]:
     for key in ("chunk_size", "chunk_overlap", "top_k"):
         if key in rag:
             errors.extend(_validate_non_negative_int(f"rag.{key}", rag.get(key)))
+    return errors
+
+
+def _validate_voice(voice: dict[str, Any] | None) -> list[ValidationError]:
+    if voice is None:
+        return []
+    errors: list[ValidationError] = []
+    for key in (
+        "startup_timeout_seconds",
+        "health_check_timeout_seconds",
+        "batch_size",
+        "timeout_seconds",
+        "max_tts_chars",
+    ):
+        if key in voice:
+            errors.extend(_validate_positive_int(f"voice.{key}", voice.get(key)))
+    for key in ("speed_factor", "volume"):
+        if key in voice:
+            errors.extend(_validate_float_range(f"voice.{key}", voice.get(key), 0, 10))
     return errors
 
 

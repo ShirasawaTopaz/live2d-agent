@@ -127,8 +127,13 @@ class VoiceConfig:
     """Configuration for GPT-SoVITs voice synthesis."""
 
     enabled: bool = False
+    auto_start: bool = False
     endpoint: str = "http://127.0.0.1:9880/tts"
     method: str = "GET"
+    startup_command: str = ""
+    startup_cwd: str = ""
+    startup_timeout_seconds: int = 30
+    health_check_timeout_seconds: int = 3
     text_lang: str = "zh"
     ref_audio_path: str = ""
     prompt_text: str = ""
@@ -145,8 +150,13 @@ class VoiceConfig:
     def from_dict(cls, data: dict[str, Any]) -> "VoiceConfig":
         return cls(
             enabled=data.get("enabled", False),
+            auto_start=data.get("auto_start", False),
             endpoint=data.get("endpoint", "http://127.0.0.1:9880/tts"),
             method=data.get("method", "GET"),
+            startup_command=data.get("startup_command", ""),
+            startup_cwd=data.get("startup_cwd", ""),
+            startup_timeout_seconds=data.get("startup_timeout_seconds", 30),
+            health_check_timeout_seconds=data.get("health_check_timeout_seconds", 3),
             text_lang=data.get("text_lang", "zh"),
             ref_audio_path=data.get("ref_audio_path", ""),
             prompt_text=data.get("prompt_text", ""),
@@ -163,8 +173,13 @@ class VoiceConfig:
     def to_dict(self) -> dict[str, Any]:
         return {
             "enabled": self.enabled,
+            "auto_start": self.auto_start,
             "endpoint": self.endpoint,
             "method": self.method,
+            "startup_command": self.startup_command,
+            "startup_cwd": self.startup_cwd,
+            "startup_timeout_seconds": self.startup_timeout_seconds,
+            "health_check_timeout_seconds": self.health_check_timeout_seconds,
             "text_lang": self.text_lang,
             "ref_audio_path": self.ref_audio_path,
             "prompt_text": self.prompt_text,
