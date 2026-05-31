@@ -430,17 +430,33 @@ class ChatService:
             )
 
     async def _prepare_memory_and_history(self, message: Any) -> None:
-        user_message: Message = {"role": "user", "content": str(message)}
+        if isinstance(message, dict):
+            text = message.get("content", str(message))
+            images = message.get("images", [])
+        else:
+            text = str(message) if message is not None else ""
+            images = []
+
+        user_message: Message = {"role": "user", "content": text}
         self.agent.memory.add_message(user_message)
 
         rag_context = ""
-        if self.agent.rag is not None and self.agent.rag.is_enabled and message is not None:
-            documents = self.agent.rag.retrieve(str(message))
+        if self.agent.rag is not None and self.agent.rag.is_enabled and text:
+            documents = self.agent.rag.retrieve(text)
             if documents:
                 rag_context = self.agent.rag.format_retrieved_context(documents)
                 logging.info(f"RAG retrieved {len(documents)} relevant documents")
 
         model_messages = await self.agent.memory.get_current_messages()
+
+        if images:
+            from internal.agent.vision import build_vision_messages
+            vision_msgs = build_vision_messages(text, images)
+            for i in range(len(model_messages) - 1, -1, -1):
+                if model_messages[i]["role"] == "user":
+                    model_messages[i] = vision_msgs[0]
+                    break
+
         if rag_context:
             self._inject_rag_context(model_messages, rag_context)
         self.agent.model.history = model_messages.copy()
@@ -511,6 +527,9 @@ class ChatService:
 
         if final_response is None:
             final_response = {"role": "assistant", "content": final_content}
+            token_count = chunk.get("token_count") if isinstance(chunk, dict) else None
+            if token_count:
+                final_response["token_count"] = token_count
             logging.info(f"Stream completed, final length: {len(final_content)}")
             return final_response, False, True
 

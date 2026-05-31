@@ -62,7 +62,26 @@ poetry run python build.py
  6. **Prompt Manager** (`internal/prompt_manager/`)
     - `prompt_manager.py` - Loads and composes modular prompts from `prompt_modules/`
 
- 7. **MCP Layer** (`internal/mcp/`) **(Model Context Protocol - NEW)**
+ 7. **Session Manager** (`internal/session/`) **(NEW)**
+    - `types.py` - `Session`, `ClassificationResult` dataclasses
+    - `topic_classifier.py` - Two-layer topic detection (keyword + embedding)
+    - `router.py` - STAY/SWITCH/CREATE routing decisions
+    - `session_store.py` - JSON persistence for session metadata
+    - `session_manager.py` - Orchestrator wiring classifier + router + store + MemoryManager
+
+ 8. **Scheduler** (`internal/scheduler/`) **(NEW)**
+    - `types.py` - `CronTask`, `WatchTask`, `PollingTask`, `TriggerSource` ABC
+    - `triggers.py` - `CronTrigger`, `FileWatcher`, `PollingTrigger`
+    - `store.py` - `TaskStore` JSON persistence
+    - `notification.py` - `NotificationManager` (tray + Live2D bubble)
+    - `engine.py` - `SchedulerEngine` task lifecycle management
+
+ 9. **Integration Layer** (`internal/integration/`) **(NEW)**
+    - `clipboard.py` - `ClipboardMonitor` + `MiniActionBar` popup
+    - `browser.py` - `BrowserController` (8 Playwright tools)
+    - `hotkey.py` - `HotkeyManager` (Qt QShortcut + pynput fallback)
+
+ 10. **MCP Layer** (`internal/mcp/`) **(Model Context Protocol)**
     - `protocol.py` - MCP protocol definitions: messages, chunks, request/response
     - `config.py` - MCP configuration (local/hybrid/remote modes, compression strategies)
     - `manager.py` - `MCPContextManager` - core three-layer context management
@@ -70,6 +89,31 @@ poetry run python build.py
     - `backend.py` - Local storage backends: JSON/SQLite
     - `remote.py` - Remote MCP service HTTP client
     - Features: three-layer storage (Working → Recent → Long-Term), multi-scope isolation, remote service integration
+
+### Configuration Options (config.json)
+
+New productivity features are opt-in. Add to `config.json`:
+
+```json
+{
+  "session": { "enabled": true },
+  "scheduler": { "enabled": true, "data_dir": "./data/scheduler" },
+  "integration": { "hotkeys_enabled": true, "clipboard_enabled": true, "browser_headless": true }
+}
+```
+
+### Quick Reference: New Modules
+
+| Module | Path | Purpose |
+|--------|------|---------|
+| SessionRouter | `internal/session/` | Auto-detect topic, switch/create sessions |
+| TopicClassifier | `internal/session/topic_classifier.py` | Keyword + embedding topic detection |
+| Router | `internal/session/router.py` | STAY/SWITCH/CREATE decisions |
+| SchedulerEngine | `internal/scheduler/` | Cron/watch/polling background tasks |
+| TriggerSource | `internal/scheduler/types.py` | Pluggable event source ABC |
+| ClipboardMonitor | `internal/integration/clipboard.py` | Clip detection + mini action bar |
+| BrowserController | `internal/integration/browser.py` | Playwright web automation tools |
+| HotkeyManager | `internal/integration/hotkey.py` | Global shortcuts (Qt + pynput) |
 
 ### Key Classes and Interfaces
 

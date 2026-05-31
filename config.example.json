@@ -261,6 +261,19 @@
         "max_plan_depth": 10,
         "auto_save": true
     },
+    "session": {
+        "enabled": true,
+        "data_dir": "./data/sessions"
+    },
+    "scheduler": {
+        "enabled": false,
+        "data_dir": "./data/scheduler"
+    },
+    "integration": {
+        "hotkeys_enabled": true,
+        "clipboard_enabled": true,
+        "browser_headless": true
+    },
     "rag": {
         "enabled": false,
         "document_dir": "./documents",

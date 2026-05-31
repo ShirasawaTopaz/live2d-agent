@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import time
+import uuid
 from typing import Any
 
 from internal.config.config import Config
@@ -29,6 +31,11 @@ class Live2DAgentApp:
         self.ws: ReconnectingWebSocket | None = None
         self.config: Any = None
         self.settings_window: Any = None
+        self.chat_history_window: Any = None
+        self.scheduler: Any = None
+        self.hotkey_manager: Any = None
+        self.clipboard_monitor: Any = None
+        self.browser_controller: Any = None
         self._processing = False
         self._context_lock = asyncio.Lock()
         self.runtime_state = QueueRuntimeCoordinator()
@@ -45,6 +52,9 @@ class Live2DAgentApp:
         self._apply_bootstrap_context(context)
         self._connect_runtime_and_input()
         self._setup_tray_and_window()
+        await self._initialize_session_router()
+        await self._initialize_scheduler()
+        await self._initialize_integrations()
         self.show_input_box()
         logger.info("输入框已显示")
 
@@ -55,6 +65,7 @@ class Live2DAgentApp:
         self.agent = context.agent
         self.input_box = context.input_box
         self.bubble_widget = context.bubble_widget
+        self.chat_history_window = context.chat_history_window
 
     def _connect_runtime_and_input(self) -> None:
         connect_input_signals(
@@ -66,6 +77,130 @@ class Live2DAgentApp:
         )
         if self.ws is not None:
             self.runtime_state.attach(self.ws)
+
+    async def _initialize_session_router(self) -> None:
+        """Initialize the session auto-router if enabled in config."""
+        session_config = getattr(self.config, "session", None)
+        enabled = getattr(session_config, "enabled", True) if session_config is not None else True
+        if not enabled:
+            return
+
+        try:
+            from internal.session import TopicClassifier, SessionRouter
+            from internal.session.session_store import SessionStore
+
+            data_dir = getattr(session_config, "data_dir", "./data/sessions") if session_config is not None else "./data/sessions"
+            store = SessionStore(data_dir=data_dir)
+            classifier = TopicClassifier(embedding_model=None)
+
+            # Try loading embeddings for better classification
+            try:
+                from internal.rag.embeddings import EmbeddingGenerator
+                emb = EmbeddingGenerator()
+                emb.load()
+                classifier = TopicClassifier(embedding_model=emb)
+            except Exception:
+                pass  # Keyword-only classification is fine
+
+            memory = self.agent.memory if hasattr(self.agent, "memory") else None
+            router = SessionRouter(
+                session_store=store,
+                classifier=classifier,
+                memory_manager=memory,
+            )
+            await router.initialize()
+
+            if self.agent is not None:
+                self.agent.session_router = router
+
+            logger.info("Session router initialized")
+        except Exception:
+            logger.warning("Session router initialization failed", exc_info=True)
+
+    async def _initialize_scheduler(self) -> None:
+        """Initialize the background scheduler if configured."""
+        scheduler_config = getattr(self.config, "scheduler", None)
+        enabled = getattr(scheduler_config, "enabled", False) if scheduler_config is not None else False
+        if not enabled:
+            return
+
+        try:
+            from internal.scheduler import SchedulerEngine, NotificationManager
+            from internal.scheduler.store import TaskStore
+
+            data_dir = getattr(scheduler_config, "data_dir", "./data/scheduler") if scheduler_config is not None else "./data/scheduler"
+            store = TaskStore(data_dir=data_dir)
+            notifier = NotificationManager(
+                tray_icon=self.tray_icon,
+                websocket=self.ws,
+            )
+            engine = SchedulerEngine(store=store, notification=notifier, agent=self.agent)
+            await engine.initialize()
+            self.scheduler = engine
+            logger.info("Scheduler initialized")
+        except Exception:
+            logger.warning("Scheduler initialization failed", exc_info=True)
+
+    async def _initialize_integrations(self) -> None:
+        """Initialize integration modules (hotkeys, clipboard, browser)."""
+        integration_config = getattr(self.config, "integration", None)
+        if integration_config is None:
+            integration_config = {}
+
+        hotkeys_enabled = getattr(integration_config, "hotkeys_enabled", True)
+        if hotkeys_enabled:
+            try:
+                from internal.integration import HotkeyManager
+                self.hotkey_manager = HotkeyManager()
+                self.hotkey_manager.register(
+                    HotkeyManager.DEFAULT_SUMMON, self._on_hotkey_summon)
+                self.hotkey_manager.register(
+                    HotkeyManager.DEFAULT_CLIP_PROCESS, self._on_hotkey_clipboard_process)
+                logger.info("Hotkeys registered")
+            except Exception:
+                logger.warning("Hotkey registration failed", exc_info=True)
+
+        clipboard_enabled = getattr(integration_config, "clipboard_enabled", True)
+        if clipboard_enabled:
+            try:
+                from internal.integration import ClipboardMonitor
+                self.clipboard_monitor = ClipboardMonitor()
+                self.clipboard_monitor.set_on_action(self._on_clipboard_action)
+                self.clipboard_monitor.set_enabled(True)
+                logger.info("Clipboard monitor started")
+            except Exception:
+                logger.warning("Clipboard monitor init failed", exc_info=True)
+
+    def _on_hotkey_summon(self) -> None:
+        if self.input_box is not None:
+            if self.input_box.isVisible():
+                self.hide_input_box()
+            else:
+                self.show_input_box()
+
+    def _on_hotkey_clipboard_process(self) -> None:
+        if self.input_box is None:
+            return
+        try:
+            from PySide6.QtWidgets import QApplication
+            app = QApplication.instance()
+            if app is None:
+                return
+            clipboard = app.clipboard()
+            if clipboard is None:
+                return
+            text = clipboard.text().strip()
+            if text:
+                self.input_box.text_edit.setText(text)
+                self.show_input_box()
+        except Exception:
+            logger.warning("Clipboard quick process failed", exc_info=True)
+
+    def _on_clipboard_action(self, action: Any, text: str) -> None:
+        prompt = action.resolve_prompt(text)
+        if self.input_box is not None:
+            self.input_box.text_edit.setText(prompt)
+            self.show_input_box()
 
     def _setup_tray_and_window(self) -> None:
         if self.qt_app is not None:
@@ -79,6 +214,7 @@ class Live2DAgentApp:
                 open_settings=self.open_settings,
                 quit_app=self.quit,
                 on_activated=self.on_tray_activated,
+                show_chat_history=self.show_chat_history,
             )
             setup_window_position(self.qt_app, self.input_box)
 
@@ -94,6 +230,13 @@ class Live2DAgentApp:
 
     def on_message_sent(self, text: str) -> None:
         logger.info("用户输入: %s", text)
+        if self.chat_history_window is not None:
+            self.chat_history_window.add_message({
+                "role": "user",
+                "content": text,
+                "message_id": str(uuid.uuid4()),
+                "timestamp": time.time(),
+            })
         asyncio.create_task(self.process_message(text))
 
     def on_clear_context_requested(self) -> None:
@@ -107,15 +250,27 @@ class Live2DAgentApp:
                 return
             self._processing = True
             try:
+                images: list[dict] = getattr(self.input_box, "get_last_images", lambda: [])()
                 await process_chat_message(
                     text=text,
                     input_box=self.input_box,
                     agent=self.agent,
                     websocket=self.ws,
                     is_running=self.runtime_state.is_running,
+                    on_response=self._on_assistant_response,
+                    images=images,
                 )
             finally:
                 self._processing = False
+
+    def _on_assistant_response(self, response_text: str) -> None:
+        if self.chat_history_window is not None:
+            self.chat_history_window.add_message({
+                "role": "assistant",
+                "content": response_text,
+                "message_id": str(uuid.uuid4()),
+                "timestamp": time.time(),
+            })
 
     async def reset_context(self) -> None:
         async with self._context_lock:
@@ -157,6 +312,12 @@ class Live2DAgentApp:
     def hide_input_box(self) -> None:
         if self.input_box is not None:
             self.input_box.hide()
+
+    def show_chat_history(self) -> None:
+        if self.chat_history_window is not None:
+            self.chat_history_window.show()
+            self.chat_history_window.raise_()
+            self.chat_history_window.activateWindow()
 
     def open_settings(self) -> None:
         logger.info("打开设置窗口")

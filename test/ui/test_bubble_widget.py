@@ -20,20 +20,45 @@ def qt_app():
     return app
 
 
-def test_audio_scroll_sync_maps_audio_position_to_scroll_offset(qt_app):
+def test_sync_scroll_to_audio_is_noop(qt_app):
     widget = BubbleWidget()
-    widget.resize(200, widget.height())
-    widget.set_text("x" * 200)
-    widget._scroll_target_x = -100.0
+    widget.sync_scroll_to_audio(lambda: 500, duration_ms=1000)
+    widget.clear_audio_scroll_sync()
 
-    position = {"value": 500}
 
-    widget.sync_scroll_to_audio(lambda: position["value"], duration_ms=1000)
-    target_scroll_x = widget._scroll_target_x
+def test_bubble_theme_stylesheet_applied(qt_app):
+    widget = BubbleWidget()
+    widget.set_theme("light")
+    style = widget._browser.styleSheet()
+    assert "color: #333" in style
 
-    assert widget.scroll_x == target_scroll_x * 0.5
 
-    position["value"] = 1000
-    widget._sync_scroll_to_audio()
+def test_bubble_inner_browser_created(qt_app):
+    widget = BubbleWidget()
+    from PySide6.QtWidgets import QTextBrowser
+    assert isinstance(widget._browser, QTextBrowser)
 
-    assert widget.scroll_x == target_scroll_x
+
+def test_bubble_renders_markdown(qt_app):
+    widget = BubbleWidget()
+    widget.set_text("**bold** text")
+    html = widget._browser.toHtml()
+    assert "font-weight:700" in html
+    assert "bold" in html
+    assert widget.displayed_text == "**bold** text"
+
+
+def test_bubble_typewriter_shows_text(qt_app):
+    widget = BubbleWidget()
+    widget.start_typewriter("hello")
+    assert widget.char_index == 0
+    assert widget.displayed_text == ""
+    widget._on_typewriter_tick()
+    assert widget.char_index == 1
+    assert widget.displayed_text == "h"
+
+
+def test_bubble_theme_applies_to_browser(qt_app):
+    widget = BubbleWidget()
+    widget.set_theme("light")
+    assert widget._theme == "light"

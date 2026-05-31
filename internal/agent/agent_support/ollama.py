@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Any, AsyncIterator, MutableMapping, List
+from typing import Any, AsyncIterator, MutableMapping
 
 import ollama
 
@@ -132,6 +132,13 @@ class OllamaModel(ModelTrait):
                     tools=tools if use_tools else None,
                     stream=False,
                 )
+                token_count = None
+                if isinstance(response, dict):
+                    input_tok = response.get("prompt_eval_count", 0) or 0
+                    output_tok = response.get("eval_count", 0) or 0
+                    if input_tok or output_tok:
+                        from internal.memory.types_ext import TokenUsage
+                        token_count = TokenUsage(input_tokens=input_tok, output_tokens=output_tok, total_tokens=input_tok + output_tok).to_dict()
                 if use_tools:
                     self._tools_supported = True
                     
@@ -140,6 +147,8 @@ class OllamaModel(ModelTrait):
                 # If using native tool calls or not using tools, return directly
                 if not use_tools or (isinstance(message_dict, dict) and "tool_calls" in message_dict) or hasattr(message_dict, "tool_calls"):
                     self.history.append(message_dict)
+                    if token_count:
+                        message_dict["token_count"] = token_count
                     return message_dict
 
                 # For text-based tool call extraction, only extract if content looks like it contains tool calls
@@ -153,6 +162,8 @@ class OllamaModel(ModelTrait):
                             if extracted:
                                 message_dict["tool_calls"] = extracted
                             self.history.append(message_dict)
+                            if token_count:
+                                message_dict["token_count"] = token_count
                             return message_dict
                         else:
                             # Parsing failed, ask model to correct the format
@@ -173,10 +184,14 @@ class OllamaModel(ModelTrait):
                     else:
                         # Content doesn't contain tool call markers, return directly
                         self.history.append(message_dict)
+                        if token_count:
+                            message_dict["token_count"] = token_count
                         return message_dict
                 else:
                     # No content, check for tool_calls
                     self.history.append(message_dict)
+                    if token_count:
+                        message_dict["token_count"] = token_count
                     return message_dict
                         
             except ollama.ResponseError as e:
@@ -197,6 +212,15 @@ class OllamaModel(ModelTrait):
                         stream=False,
                     )
                     message_dict = self._normalize_chat_message(response)
+                    token_count = None
+                    if isinstance(response, dict):
+                        input_tok = response.get("prompt_eval_count", 0) or 0
+                        output_tok = response.get("eval_count", 0) or 0
+                        if input_tok or output_tok:
+                            from internal.memory.types_ext import TokenUsage
+                            token_count = TokenUsage(input_tokens=input_tok, output_tokens=output_tok, total_tokens=input_tok + output_tok).to_dict()
+                    if token_count:
+                        message_dict["token_count"] = token_count
                     self.history.append(message_dict)
                     return message_dict
                 else:
@@ -205,6 +229,8 @@ class OllamaModel(ModelTrait):
         # If all retries failed, return the last response
         if last_response is None:
             last_response = {"role": "assistant", "content": "Failed to get valid response after multiple retries"}
+        if token_count and isinstance(last_response, dict):
+            last_response["token_count"] = token_count
         self.history.append(last_response)
         return last_response
 
@@ -267,9 +293,7 @@ class OllamaModel(ModelTrait):
 
         # 流式生成普通文本响应
         full_content = ""
-        # Get configured inference options
         inference_options = self._get_inference_options()
-        # 在后台线程中获取流式迭代器
         stream = await asyncio.to_thread(
             self._client.chat,
             model=self.config.model,
@@ -283,12 +307,19 @@ class OllamaModel(ModelTrait):
             if "message" in chunk and "content" in chunk["message"]:
                 delta = chunk["message"]["content"]
                 full_content += delta
-                # yield当前累积内容，done=False 表示还在生成中
                 yield {"content": full_content, "done": False}
 
-        # 流式生成完成，添加到历史记录
+        token_count = None
+        if isinstance(chunk, dict):
+            input_tok = chunk.get("prompt_eval_count", 0) or 0
+            output_tok = chunk.get("eval_count", 0) or 0
+            if input_tok or output_tok:
+                from internal.memory.types_ext import TokenUsage
+                token_count = TokenUsage(input_tokens=input_tok, output_tokens=output_tok, total_tokens=input_tok + output_tok).to_dict()
+
         message_dict = {"role": "assistant", "content": full_content}
+        if token_count:
+            message_dict["token_count"] = token_count
         self.history.append(message_dict)
 
-        # 最后一个块标记完成
-        yield {"content": full_content, "done": True}
+        yield {"content": full_content, "done": True, "token_count": token_count}

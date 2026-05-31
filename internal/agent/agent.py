@@ -46,6 +46,7 @@ class Agent:
     rag: Optional[RAGManager] = None
     live2d_expressions: Any | None = None
     live2d_scheduler: Any | None = None
+    session_router: Any | None = None  # internal.session.SessionManager
     _compression_task: asyncio.Task | None = None
 
     def __init__(
@@ -139,6 +140,26 @@ class Agent:
                 )
         except Exception as e:
             logging.error(f"Error during auto-compression: {e}", exc_info=True)
+
+    async def _route_session(self, text: str) -> str:
+        """Route user input through session auto-router.
+
+        Returns a context injection string (empty if no routing needed).
+        """
+        if self.session_router is None:
+            return ""
+
+        try:
+            from internal.session.router import RouteAction
+
+            action, context = await self.session_router.route_message(text)
+            logging.info("Session routing: action=%s", action.name)
+            return context
+        except Exception:
+            logging.warning(
+                "Session routing failed, continuing in current session", exc_info=True
+            )
+            return ""
 
     async def chat(self, message: Any, ws: Client) -> dict:
         return await self.chat_service.chat(message, ws)

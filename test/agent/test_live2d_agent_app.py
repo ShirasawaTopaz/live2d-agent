@@ -77,6 +77,12 @@ def test_initialize_applies_bootstrap_context_and_wires_runtime(monkeypatch) -> 
         agent=agent,
         input_box=input_box,
         bubble_widget=bubble_widget,
+        chat_history_window=SimpleNamespace(
+            add_message=lambda msg: None,
+            show=lambda: None,
+            raise_=lambda: None,
+            activateWindow=lambda: None,
+        ),
     )
     shown: list[bool] = []
     tray_calls: list[tuple[object, object]] = []

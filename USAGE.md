@@ -11,6 +11,9 @@ This guide covers everything you need to know to install, configure, and use Liv
 - [Source-Only Transformers Fine-Tuning Helper](#source-only-transformers-fine-tuning-helper)
 - [Skill System](#skill-system)
 - [Conversation Memory & MCP (Model Context Protocol)](#conversation-memory--mcp-model-context-protocol)
+- [Multi-Session Auto-Routing](#multi-session-auto-routing)
+- [Background Scheduler](#background-scheduler)
+- [External Integrations](#external-integrations)
 - [Security Sandbox](#security-sandbox)
 - [Building a Standalone Executable](#building-a-standalone-executable)
 - [Troubleshooting](#troubleshooting)
@@ -1272,6 +1275,139 @@ data/
 You can change the storage location by modifying the `data_dir` setting in your configuration.
 
 Both JSON and SQLite storage keep all data on your local machine when using local MCP mode. Your conversation history never leaves your computer unless you use a remote MCP service.
+
+---
+
+## Multi-Session Auto-Routing
+
+### Overview
+
+Live2oder can automatically detect topic changes and manage multiple conversation sessions without manual switching. When you change topics (e.g., from coding to translation), the system creates or switches to the appropriate session, keeping each conversation context clean and focused.
+
+### How It Works
+
+1. **Topic Detection** — Each user message is analyzed using keyword matching (fast) and optionally embedding similarity (for ambiguous inputs)
+2. **Routing Decision** — The router decides to STAY (same session), SWITCH (move to existing related session), or CREATE (start a new session)
+3. **Context Inheritance** — When switching or creating, key context variables (language, preferences, current project) are inherited from the previous session
+4. **Summary Injection** — A brief summary of the old session is injected into the new context, so the model knows what was discussed
+
+### Configuration
+
+```json
+{
+  "session": {
+    "enabled": true,
+    "data_dir": "./data/sessions"
+  }
+}
+```
+
+Set `enabled: false` to disable auto-routing and use the traditional single-session mode.
+
+### Behavior
+
+- **No visible UI changes** — sessions switch automatically behind the scenes
+- **Sessions persist** across app restarts
+- **Most recent session** is restored on startup
+- **Classification confidence** determines whether to switch: high confidence (>80%) triggers routing, low confidence stays in place
+
+---
+
+## Background Scheduler
+
+### Overview
+
+The scheduler enables proactive AI behavior — tasks that run on a schedule, watch for file system events, or poll at intervals. Each task executes through the Agent in its own isolated session, and results are delivered via desktop notifications and Live2D bubbles.
+
+### Task Types
+
+| Type | Trigger | Example |
+|------|---------|---------|
+| **CronTask** | Cron expression or one-shot timestamp | "每天早上9点汇总今日待办" |
+| **WatchTask** | File system events (created, modified) | "监控 Downloads 文件夹的新PDF" |
+| **PollingTask** | Fixed interval | "每30分钟检查一次GitHub Issue更新" |
+
+### Configuration
+
+```json
+{
+  "scheduler": {
+    "enabled": true,
+    "data_dir": "./data/scheduler"
+  }
+}
+```
+
+### Notifications
+
+Completed tasks deliver results through:
+- **Desktop toast** — `QSystemTrayIcon.showMessage()` system notification
+- **Live2D bubble** — Speech bubble text via WebSocket (if connected)
+- **Audit log** — Task execution history stored in task metadata
+
+### Extension
+
+New trigger sources can be added by implementing the `TriggerSource` ABC in `internal/scheduler/triggers.py`:
+- `NetworkWatcher` — port/connection state changes (planned)
+- `WebhookListener` — HTTP webhook endpoint (planned)
+- `ClipboardChangeTrigger` — clipboard content changes (planned)
+
+---
+
+## External Integrations
+
+### Clipboard Monitor
+
+When enabled, Live2oder detects text you copy (Ctrl+C) and shows a mini action bar near your mouse cursor with quick processing options:
+
+| Action | Description |
+|--------|-------------|
+| 📝 总结 | Summarize the copied text in Chinese |
+| 🌐 翻译 | Translate the copied text to Chinese |
+| 🔄 改写 | Rewrite for clarity and professionalism |
+| 💻 解释代码 | Explain the copied code |
+
+Clicking an action fills the input box with the corresponding prompt. The mini bar auto-dismisses after 3 seconds.
+
+### Browser Tools
+
+The Agent gains 8 browser automation tools powered by Playwright:
+
+| Tool | Description |
+|------|-------------|
+| `browser_open` | Navigate to URL, return page content |
+| `browser_extract` | Extract content via CSS selector |
+| `browser_click` | Click a page element |
+| `browser_type` | Type text into input fields |
+| `browser_search` | Search and return top 5 results |
+| `browser_screenshot` | Screenshot page or element |
+| `browser_scroll` | Scroll page up/down |
+| `browser_close` | Close the browser |
+
+Example: "帮我在淘宝搜机械键盘，比较前三名的价格" — the Agent will use browser tools to search, extract prices, and compare.
+
+### Global Hotkeys
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Shift+Space` | Toggle input box visibility |
+| `Ctrl+Shift+C` | Quick-process clipboard text |
+
+Hotkeys use Qt `QShortcut` natively, with `pynput` as fallback. Configurable in `config.json` (planned).
+
+### Configuration
+
+```json
+{
+  "integration": {
+    "hotkeys_enabled": true,
+    "clipboard_enabled": true,
+    "browser_headless": true
+  }
+}
+```
+
+Set `browser_headless: false` to see the browser window during automation.
 
 ---
 

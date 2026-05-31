@@ -287,6 +287,29 @@ class MemoryManager:
         assert self._initialized
         return await self.session_manager.switch_session(session_id)
 
+    async def get_session_messages(self, session_id: str) -> List[Message]:
+        """Get messages for a specific session without switching to it.
+
+        Used by the session auto-router to peek at a session's context
+        before deciding whether to switch.
+        """
+        assert self._initialized
+        if self._mcp is not None:
+            # MCP path returns empty for now — session routing works with
+            # existing switch_session flow
+            return []
+
+        # Legacy: load from storage
+        if self._storage is None:
+            return []
+        data = await self._storage.load_session(session_id)
+        if data is None:
+            return []
+        from internal.memory._types import ConversationTurn
+
+        turns = [ConversationTurn.from_dict(t) for t in data.get("turns", [])]
+        return [turn.message for turn in turns]
+
     def list_sessions(self) -> List[SessionInfo]:
         """列出所有会话"""
         assert self._initialized

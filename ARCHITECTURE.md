@@ -36,6 +36,12 @@ The application follows a modular layered architecture with clear separation of 
 │  MCP Layer (Optional)      (internal/mcp/)                  │
 │  Model Context Protocol - advanced context management        │
 ├─────────────────────────────────────────────────────────────┤
+│  Productivity Platform                                      │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────────┐│
+│  │ Session      │ │ Scheduler   │ │ Integration             ││
+│  │ Auto-routing │ │ Cron/Watch  │ │ Clipboard/Browser/Hotkey││
+│  └─────────────┘ └─────────────┘ └─────────────────────────┘│
+├─────────────────────────────────────────────────────────────┤
 │  WebSocket Layer         (internal/websocket/)              │
 │  Live2D connection with automatic reconnection               │
 ├─────────────────────────────────────────────────────────────┤
@@ -190,22 +196,58 @@ This is an optional advanced feature that provides more sophisticated context ma
 - Remote context service integration
 - Pluggable compression strategies
 
+### Session Manager (`internal/session/`) *New*
+
+Model-driven multi-session auto-routing that automatically detects topic changes and switches or creates sessions without manual management:
+
+- **`types.py`** - `Session` and `ClassificationResult` dataclasses
+- **`topic_classifier.py`** - Two-layer topic detection: keyword regex (fast) + embedding similarity (fallback)
+- **`router.py`** - Decision engine: STAY (keep current session), SWITCH (move to existing), CREATE (new session)
+- **`session_store.py`** - JSON persistence for session metadata (topic, summary, context snapshots)
+- **`session_manager.py`** - Orchestrator that wires classifier + router + store + MemoryManager
+
+When switching sessions, the router injects a summary of the previous session into the new context, giving the model awareness of the transition. Context variables (language, preferences, current project) are inherited to new sessions automatically.
+
+### Scheduler (`internal/scheduler/`) *New*
+
+Background task engine enabling proactive AI behavior with extensible trigger sources:
+
+- **`types.py`** - `CronTask`, `WatchTask`, `PollingTask` data classes and `TriggerSource` ABC
+- **`triggers.py`** - Built-in triggers: `CronTrigger` (cron/one-shot), `FileWatcher` (watchdog), `PollingTrigger` (interval)
+- **`store.py`** - `TaskStore` for persisting scheduled tasks to JSON
+- **`notification.py`** - `NotificationManager` delivering results via tray toast and Live2D bubble
+- **`engine.py`** - `SchedulerEngine` managing task lifecycle (add/remove/pause/resume/execute)
+
+Each scheduled task runs in its own isolated session. One-shot cron tasks auto-disable after firing. Results are delivered as desktop notifications with summaries.
+
+### Integration Layer (`internal/integration/`) *New*
+
+External integrations that make the AI assistant more accessible and capable:
+
+- **`clipboard.py`** - `ClipboardMonitor` detects text copies and shows a `MiniActionBar` popup near the mouse with quick actions (summarize, translate, rewrite, explain code)
+- **`browser.py`** - `BrowserController` wrapping Playwright for web automation, exposed as 8 Agent tools: `browser_open`, `browser_extract`, `browser_click`, `browser_type`, `browser_search`, `browser_screenshot`, `browser_scroll`, `browser_close`
+- **`hotkey.py`** - `HotkeyManager` for global shortcuts (Qt QShortcut primary, pynput fallback). Defaults: `Ctrl+Shift+Space` (summon) and `Ctrl+Shift+C` (clipboard quick-process)
+
+All three modules are opt-in via `config.json` and default to disabled to preserve existing behavior.
+
 ## Data Flow
 
 A typical interaction follows this flow:
 
-1. **User Input** → User types message in `FloatingInputBox` (UI Layer)
+1. **User Input** → User types message in `FloatingInputBox` (UI Layer), or uses `Ctrl+Shift+Space` hotkey
 2. **Agent receives message** → `Agent.on_user_message()` (Agent Layer)
-3. **Memory retrieval** → `MemoryManager.get_working_context()` retrieves relevant context (Memory System)
-4. **Prompt composition** → `PromptManager.compose()` builds the full prompt from modules (Prompt Manager)
-5. **Model inference** → AI backend (`ModelTrait`) generates response (Model Support)
-6. **Tool call detection** → Agent parses response and checks if tool calls are requested
-7. **(Optional) Tool execution** → Tool is invoked via registry, potentially through sandbox middleware (Tool System)
+3. **Session routing** → `SessionManager.route_message()` classifies topic, switches/creates session if needed (Session Layer)
+4. **Memory retrieval** → `MemoryManager.get_working_context()` retrieves relevant context (Memory System)
+5. **Prompt composition** → `PromptManager.compose()` builds the full prompt from modules (Prompt Manager)
+6. **Model inference** → AI backend (`ModelTrait`) generates response (Model Support)
+7. **Tool call detection** → Agent parses response and checks if tool calls are requested
+8. **(Optional) Tool execution** → Tool is invoked via registry, potentially through sandbox middleware (Tool System)
    - If the tool controls Live2D → Command sent via WebSocket Layer to Live2D service
-8. **Response generation** → Final response is prepared after tool execution
-9. **Memory storage** → New interaction is stored in `MemoryManager` (Memory System)
-10. **UI update** → Response displayed in `BubbleWidget` (UI Layer)
-11. **Live2D output** → Response text and expressions sent via WebSocket to Live2D model (WebSocket Layer)
+   - If a browser tool → `BrowserController` handles navigation/extraction via Playwright (Integration Layer)
+9. **Response generation** → Final response is prepared after tool execution
+10. **Memory storage** → New interaction is stored in `MemoryManager` (Memory System)
+11. **UI update** → Response displayed in `BubbleWidget` (UI Layer)
+12. **Live2D output** → Response text and expressions sent via WebSocket to Live2D model (WebSocket Layer)
 
 ## Key Architectural Design Decisions
 
@@ -254,3 +296,6 @@ Live2oder can be extended in several ways:
 3. **Add a new skill** - Create a new directory in `skills/` with your skill definition
 4. **Add prompt modules** - Create new modules in `prompt_modules/` and reference them in config
 5. **Add a new memory storage backend** - Implement the storage interface in `internal/memory/storage/`
+6. **Add a new trigger source** - Implement `TriggerSource` ABC in `internal/scheduler/triggers.py` (e.g., `NetworkWatcher`, `WebhookListener`)
+7. **Add a new integration** - Create a module in `internal/integration/` for clipboard, browser, or other external services
+8. **Add custom ClipActions** - Register custom quick actions for the clipboard mini bar in settings

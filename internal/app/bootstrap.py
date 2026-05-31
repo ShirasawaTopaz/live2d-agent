@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
 BubbleWidget: Any = None
 FloatingInputBox: Any = None
+ChatHistoryWindow: Any = None
 
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ class BootstrapContext:
     agent: Any
     input_box: "FloatingInputBoxType"
     bubble_widget: "BubbleWidgetType"
+    chat_history_window: Any = None
 
 
 async def bootstrap_application() -> BootstrapContext:
@@ -39,7 +41,7 @@ async def bootstrap_application() -> BootstrapContext:
     agent = create_runtime_agent(config)
     await warmup_voice_client(agent)
     websocket = await create_websocket(config)
-    input_box, bubble_widget = create_ui_components(agent)
+    input_box, bubble_widget, chat_history_window = create_ui_components(agent)
     if hasattr(qt_app, "aboutToQuit"):
         qt_app.aboutToQuit.connect(lambda: dispose_voice_player(agent))
 
@@ -51,6 +53,7 @@ async def bootstrap_application() -> BootstrapContext:
         agent=agent,
         input_box=input_box,
         bubble_widget=bubble_widget,
+        chat_history_window=chat_history_window,
     )
 
 
@@ -70,7 +73,7 @@ def create_qt_application() -> Any:
     return qt_app
 
 
-def create_ui_components(agent: Any) -> tuple["FloatingInputBoxType", "BubbleWidgetType"]:
+def create_ui_components(agent: Any) -> tuple["FloatingInputBoxType", "BubbleWidgetType", Any]:
     global BubbleWidget, FloatingInputBox
 
     cleanup_voice_temp_files()
@@ -80,7 +83,7 @@ def create_ui_components(agent: Any) -> tuple["FloatingInputBoxType", "BubbleWid
         FloatingInputBox = ui_module.FloatingInputBox
         BubbleWidget = ui_module.BubbleWidget
 
-    input_box = FloatingInputBox(agent=agent, title="Agent Chat")
+    input_box = FloatingInputBox(agent=agent)
     bubble_widget = BubbleWidget()
     bubble_widget.set_theme(str(input_box._theme))
     agent.bubble_widget = bubble_widget
@@ -88,7 +91,13 @@ def create_ui_components(agent: Any) -> tuple["FloatingInputBoxType", "BubbleWid
     if bubble_timing is not None and getattr(bubble_timing, "voice_client", None) is not None:
         volume = getattr(bubble_timing.voice_client.config, "volume", 1.0)
         bubble_timing.set_audio_player(QtAudioPlayer(volume=volume))
-    return input_box, bubble_widget
+
+    global ChatHistoryWindow
+    if ChatHistoryWindow is None:
+        chw_module = import_module("internal.ui.chat_history_window")
+        ChatHistoryWindow = chw_module.ChatHistoryWindow
+    chat_history_window = ChatHistoryWindow()
+    return input_box, bubble_widget, chat_history_window
 
 
 def dispose_voice_player(agent: Any) -> None:

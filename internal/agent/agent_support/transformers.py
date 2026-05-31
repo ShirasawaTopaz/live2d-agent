@@ -1,7 +1,7 @@
 import json
 import logging
 import asyncio
-from typing import Any, AsyncIterator, List, MutableMapping, Optional
+from typing import Any, AsyncIterator, List, MutableMapping
 from internal.agent.agent_support.trait import ModelTrait
 from internal.agent.response import ToolCallParser
 from internal.config.config import AIModelConfig
@@ -321,6 +321,16 @@ class Transformers(ModelTrait):
 
         # 解析响应，检查是否包含工具调用
         response_dict = self._parse_response(response_text, use_tools)
+
+        input_tok = len(self._tokenizer.encode(text)) if hasattr(self._tokenizer, "encode") else 0
+        output_tok = len(self._tokenizer.encode(response_text)) if hasattr(self._tokenizer, "encode") else 0
+        if input_tok or output_tok:
+            from internal.memory.types_ext import TokenUsage
+            response_dict["token_count"] = TokenUsage(
+                input_tokens=input_tok,
+                output_tokens=output_tok,
+                total_tokens=input_tok + output_tok,
+            ).to_dict()
 
         # 将响应添加到历史记录
         self.history.append(response_dict)

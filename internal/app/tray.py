@@ -34,6 +34,7 @@ def create_tray_icon(
     open_settings: Callable[[], None],
     quit_app: Callable[[], None],
     on_activated: Callable[[Any], None],
+    show_chat_history: Callable[[], None] | None = None,
 ) -> Any:
     """Create the system tray icon if the platform supports it."""
     qt_widgets = import_module("PySide6.QtWidgets")
@@ -66,6 +67,9 @@ def create_tray_icon(
     menu.addSeparator()
     menu.addAction("设置").triggered.connect(open_settings)
     menu.addSeparator()
+    if show_chat_history is not None:
+        menu.addAction("聊天历史").triggered.connect(show_chat_history)
+        menu.addSeparator()
     menu.addAction("退出").triggered.connect(quit_app)
     tray_icon.setContextMenu(menu)
     tray_icon.activated.connect(on_activated)

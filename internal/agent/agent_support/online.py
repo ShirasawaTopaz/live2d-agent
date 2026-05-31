@@ -140,6 +140,13 @@ class OnlineModel(ModelTrait):
             params = self._build_request_params(tools=tools if use_tools else None, stream=False)
 
             response = await self._client.chat.completions.create(**params)
+            token_count = None
+            if response and hasattr(response, "usage") and response.usage:
+                token_count = {
+                    "input": response.usage.prompt_tokens or 0 if hasattr(response.usage, "prompt_tokens") else 0,
+                    "output": response.usage.completion_tokens or 0 if hasattr(response.usage, "completion_tokens") else 0,
+                    "total": response.usage.total_tokens or 0 if hasattr(response.usage, "total_tokens") else 0,
+                }
             if use_tools:
                 self._tools_supported = True
             # Check if choices is valid and not empty
@@ -150,6 +157,8 @@ class OnlineModel(ModelTrait):
                 raise RuntimeError("API 返回空的 message，请检查配置或重试")
             # Convert ChatCompletionMessage object to dict
             message_dict = self._message_to_dict(message)
+            if token_count:
+                message_dict["token_count"] = token_count
             self.history.append(message_dict)
             return message_dict
         except Exception as e:
@@ -163,6 +172,13 @@ class OnlineModel(ModelTrait):
                 params = self._build_request_params(tools=None, stream=False)
 
                 response = await self._client.chat.completions.create(**params)
+                token_count = None
+                if response and hasattr(response, "usage") and response.usage:
+                    token_count = {
+                        "input": response.usage.prompt_tokens or 0 if hasattr(response.usage, "prompt_tokens") else 0,
+                        "output": response.usage.completion_tokens or 0 if hasattr(response.usage, "completion_tokens") else 0,
+                        "total": response.usage.total_tokens or 0 if hasattr(response.usage, "total_tokens") else 0,
+                    }
                 # Check if choices is valid and not empty
                 if not response.choices or len(response.choices) == 0:
                     raise RuntimeError("API 返回空的 choices 列表，请检查配置或重试")
@@ -171,6 +187,8 @@ class OnlineModel(ModelTrait):
                     raise RuntimeError("API 返回空的 message，请检查配置或重试")
                 # Convert ChatCompletionMessage object to dict
                 message_dict = self._message_to_dict(message)
+                if token_count:
+                    message_dict["token_count"] = token_count
                 self.history.append(message_dict)
                 return message_dict
             else:
@@ -228,6 +246,13 @@ class OnlineModel(ModelTrait):
                             params[key] = value
 
                 response = await self._client.chat.completions.create(**params)
+                token_count = None
+                if response and hasattr(response, "usage") and response.usage:
+                    token_count = {
+                        "input": response.usage.prompt_tokens or 0 if hasattr(response.usage, "prompt_tokens") else 0,
+                        "output": response.usage.completion_tokens or 0 if hasattr(response.usage, "completion_tokens") else 0,
+                        "total": response.usage.total_tokens or 0 if hasattr(response.usage, "total_tokens") else 0,
+                    }
                 if use_tools:
                     self._tools_supported = True
                 if not response.choices or len(response.choices) == 0:
@@ -236,6 +261,8 @@ class OnlineModel(ModelTrait):
                 if message is None:
                     raise RuntimeError("API 返回空的 message，请检查配置或重试")
                 message_dict = self._message_to_dict(message)
+                if token_count:
+                    message_dict["token_count"] = token_count
                 self.history.append(message_dict)
                 # 完整返回 message_dict 以便上层能检测到 tool_calls
                 result = message_dict.copy()
@@ -258,18 +285,25 @@ class OnlineModel(ModelTrait):
         full_content = ""
         stream = await self._client.chat.completions.create(**params)
 
+        token_count = None
         async for chunk in stream:
-            if not chunk.choices or len(chunk.choices) == 0:
-                continue
-            delta = chunk.choices[0].delta
-            if delta and delta.content:
-                full_content += delta.content
-                # yield当前累积内容，done=False 表示还在生成中
-                yield {"content": full_content, "done": False}
+            if chunk.choices and len(chunk.choices) > 0:
+                delta = chunk.choices[0].delta
+                if delta and delta.content:
+                    full_content += delta.content
+                    yield {"content": full_content, "done": False}
 
-        # 流式生成完成，添加到历史记录
+            usage = getattr(chunk, "usage", None)
+            if usage:
+                token_count = {
+                    "input": usage.prompt_tokens or 0,
+                    "output": usage.completion_tokens or 0,
+                    "total": usage.total_tokens or 0,
+                }
+
         message_dict = {"role": "assistant", "content": full_content}
+        if token_count:
+            message_dict["token_count"] = token_count
         self.history.append(message_dict)
 
-        # 最后一个块标记完成
-        yield {"content": full_content, "done": True}
+        yield {"content": full_content, "done": True, "token_count": token_count}

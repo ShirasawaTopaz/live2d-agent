@@ -27,9 +27,8 @@ class FakeQApplication:
 
 
 class FakeInputBox:
-    def __init__(self, *, agent: object, title: str) -> None:
+    def __init__(self, *, agent: object) -> None:
         self.agent = agent
-        self.title = title
         self._theme: str = "midnight"
 
 
@@ -95,11 +94,11 @@ def test_create_ui_components_wires_agent_and_theme(monkeypatch) -> None:
     agent = SimpleNamespace()
     monkeypatch.setattr(bootstrap, "FloatingInputBox", FakeInputBox)
     monkeypatch.setattr(bootstrap, "BubbleWidget", FakeBubbleWidget)
+    monkeypatch.setattr(bootstrap, "ChatHistoryWindow", SimpleNamespace)
 
-    input_box, bubble_widget = bootstrap.create_ui_components(agent)
+    input_box, bubble_widget, chat_history_window = bootstrap.create_ui_components(agent)
 
     assert input_box.agent is agent
-    assert getattr(input_box, "title") == "Agent Chat"
     assert getattr(bubble_widget, "theme") == "midnight"
     assert agent.bubble_widget is bubble_widget
 
@@ -162,10 +161,11 @@ def test_bootstrap_application_uses_split_helpers(monkeypatch) -> None:
         calls.append("warmup")
         assert received_agent is agent
 
+    chat_history_window = SimpleNamespace()
     def fake_create_ui_components(received_agent):
         calls.append("ui")
         assert received_agent is agent
-        return input_box, bubble_widget
+        return input_box, bubble_widget, chat_history_window
 
     monkeypatch.setattr(bootstrap, "load_startup_resources", fake_load_startup_resources)
     monkeypatch.setattr(bootstrap, "create_qt_application", fake_create_qt_application)
@@ -183,6 +183,7 @@ def test_bootstrap_application_uses_split_helpers(monkeypatch) -> None:
         assert context.agent is agent
         assert context.input_box is input_box
         assert context.bubble_widget is bubble_widget
+        assert context.chat_history_window is chat_history_window
         assert calls == ["load", "qt", "agent", "warmup", "websocket", "ui"]
 
     asyncio.run(scenario())

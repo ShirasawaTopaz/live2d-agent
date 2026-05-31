@@ -30,6 +30,8 @@ async def process_chat_message(
     agent: Any,
     websocket: Any,
     is_running: bool,
+    on_response: Callable[[str], None] | None = None,
+    images: list[dict] | None = None,
 ) -> None:
     if not is_running:
         return
@@ -38,8 +40,12 @@ async def process_chat_message(
             input_box.text_edit.setEnabled(False)
         if agent and websocket:
             if websocket.is_connected and websocket.client:
-                response = await agent.chat(text, websocket.client)
+                msg = {"content": text, "images": images} if images else text
+                response = await agent.chat(msg, websocket.client)
                 logger.info("Agent 响应: %s", response)
+                if on_response:
+                    content = response.get("content", "") if isinstance(response, dict) else str(response)
+                    on_response(content)
             else:
                 logger.error("WebSocket 未连接，无法发送消息")
     except Exception as exc:
@@ -48,7 +54,7 @@ async def process_chat_message(
         if input_box is not None and is_running:
             input_box.text_edit.setEnabled(True)
             input_box.text_edit.setFocus()
-            input_box._is_loading = False
+            input_box.set_loading(False)
 
 
 async def cleanup_application(
