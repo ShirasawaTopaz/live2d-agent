@@ -1,6 +1,5 @@
 """Unit tests for HotkeyManager."""
 
-import pytest
 from unittest.mock import MagicMock
 from internal.integration.hotkey import HotkeyManager, HotkeyBinding
 

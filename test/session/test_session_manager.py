@@ -1,10 +1,8 @@
 """Integration tests for SessionManager."""
 
-import time
 import tempfile
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from internal.session.types import Session, ClassificationResult
+from unittest.mock import AsyncMock, MagicMock
 from internal.session.topic_classifier import TopicClassifier
 from internal.session.router import RouteAction
 from internal.session.session_store import SessionStore

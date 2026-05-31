@@ -1,6 +1,5 @@
 """Unit tests for BrowserController."""
 
-import pytest
 from internal.integration.browser import BrowserController
 
 

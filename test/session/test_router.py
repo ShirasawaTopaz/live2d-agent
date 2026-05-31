@@ -1,7 +1,6 @@
 """Unit tests for session Router."""
 
 import time
-import pytest
 from internal.session.types import ClassificationResult, Session
 from internal.session.router import Router, RouteAction
 

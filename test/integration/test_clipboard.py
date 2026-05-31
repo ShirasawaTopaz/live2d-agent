@@ -1,6 +1,5 @@
 """Unit tests for ClipboardMonitor and ClipAction."""
 
-import pytest
 from internal.integration.clipboard import ClipAction, ClipboardMonitor
 
 

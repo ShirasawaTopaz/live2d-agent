@@ -1,6 +1,5 @@
 """Unit tests for TopicClassifier."""
 
-import pytest
 from internal.session.topic_classifier import TopicClassifier
 
 
