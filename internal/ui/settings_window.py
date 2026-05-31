@@ -23,6 +23,8 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QScrollArea,
     QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -63,6 +65,9 @@ class SettingsWindow(QWidget):
         self._current_model_index: int | None = None
         self._last_default_index: int | None = None
         self._syncing_model_editor = False
+        self._expr_stages_raw: list[dict[str, Any]] = []
+        self._current_expr_stage_index: int | None = None
+        self._syncing_expr_stage_editor = False
 
         self.setWindowTitle("Live2oder Settings")
         self.setMinimumSize(1000, 760)
@@ -93,6 +98,7 @@ class SettingsWindow(QWidget):
         self._build_planning_tab()
         self._build_rag_tab()
         self._build_voice_tab()
+        self._build_expressions_tab()
 
         button_row = QHBoxLayout()
         button_row.addStretch()
@@ -563,6 +569,343 @@ class SettingsWindow(QWidget):
 
         self.tabs.addTab(tab, "Voice")
 
+    def _build_expressions_tab(self) -> None:
+        tab = QWidget(self)
+        scroll = QScrollArea(tab)
+        scroll.setWidgetResizable(True)
+        host = QWidget(scroll)
+        root = QVBoxLayout(host)
+        root.setContentsMargins(16, 16, 16, 16)
+        root.setSpacing(12)
+
+        # ── Basic Settings ──
+        basic_box = QGroupBox("Basic Settings", host)
+        basic_form = QFormLayout(basic_box)
+        basic_form.setSpacing(8)
+
+        self.expr_enabled_check = QCheckBox(basic_box)
+        basic_form.addRow("enabled", self.expr_enabled_check)
+
+        self.expr_default_expression_edit = QLineEdit(basic_box)
+        self.expr_default_expression_edit.setPlaceholderText("EXP_NEUTRAL_01")
+        basic_form.addRow("defaultExpression", self.expr_default_expression_edit)
+
+        self.expr_cooldown_spin = self._create_int_spinbox(basic_box, 0, 60000)
+        self.expr_cooldown_spin.setValue(1200)
+        basic_form.addRow("cooldownMs", self.expr_cooldown_spin)
+
+        self.expr_multi_stage_check = QCheckBox(basic_box)
+        basic_form.addRow("enableMultiStage", self.expr_multi_stage_check)
+
+        self.expr_fallback_policy_combo = QComboBox(basic_box)
+        self.expr_fallback_policy_combo.addItems(["neutral", "expression-only", "intensity-only", "full"])
+        basic_form.addRow("fallbackPolicy", self.expr_fallback_policy_combo)
+
+        root.addWidget(basic_box)
+
+        # ── Expression Stages ──
+        stages_box = QGroupBox("Expression Stages", host)
+        stages_layout = QVBoxLayout(stages_box)
+
+        stages_content = QHBoxLayout()
+
+        left_col = QVBoxLayout()
+        self.expr_stage_list = QListWidget(host)
+        self.expr_stage_list.currentRowChanged.connect(self._on_expr_stage_selected)
+        left_col.addWidget(self.expr_stage_list, stretch=1)
+
+        stage_btn_row_1 = QHBoxLayout()
+        self.expr_stage_add_btn = QPushButton("Add", host)
+        self.expr_stage_add_btn.clicked.connect(self._on_add_expr_stage)
+        stage_btn_row_1.addWidget(self.expr_stage_add_btn)
+        self.expr_stage_clone_btn = QPushButton("Copy", host)
+        self.expr_stage_clone_btn.clicked.connect(self._on_copy_expr_stage)
+        stage_btn_row_1.addWidget(self.expr_stage_clone_btn)
+        left_col.addLayout(stage_btn_row_1)
+
+        stage_btn_row_2 = QHBoxLayout()
+        self.expr_stage_delete_btn = QPushButton("Delete", host)
+        self.expr_stage_delete_btn.clicked.connect(self._on_delete_expr_stage)
+        stage_btn_row_2.addWidget(self.expr_stage_delete_btn)
+        self.expr_stage_up_btn = QPushButton("Up", host)
+        self.expr_stage_up_btn.clicked.connect(self._on_move_expr_stage_up)
+        stage_btn_row_2.addWidget(self.expr_stage_up_btn)
+        self.expr_stage_down_btn = QPushButton("Down", host)
+        self.expr_stage_down_btn.clicked.connect(self._on_move_expr_stage_down)
+        stage_btn_row_2.addWidget(self.expr_stage_down_btn)
+        left_col.addLayout(stage_btn_row_2)
+
+        stages_content.addLayout(left_col, stretch=2)
+
+        stage_editor_host = QWidget(host)
+        stage_form = QFormLayout(stage_editor_host)
+        stage_form.setContentsMargins(12, 12, 12, 12)
+        stage_form.setSpacing(8)
+
+        self.expr_stage_emotion_edit = QLineEdit(stage_editor_host)
+        stage_form.addRow("emotion", self.expr_stage_emotion_edit)
+
+        self.expr_stage_expression_edit = QLineEdit(stage_editor_host)
+        stage_form.addRow("expression", self.expr_stage_expression_edit)
+
+        self.expr_stage_intensity_combo = QComboBox(stage_editor_host)
+        self.expr_stage_intensity_combo.addItems(["low", "medium", "high"])
+        stage_form.addRow("intensity", self.expr_stage_intensity_combo)
+
+        self.expr_stage_priority_spin = self._create_int_spinbox(stage_editor_host, 0, 1000)
+        stage_form.addRow("priority", self.expr_stage_priority_spin)
+
+        self.expr_stage_cooldown_spin = self._create_int_spinbox(stage_editor_host, 0, 60000)
+        stage_form.addRow("cooldownMs", self.expr_stage_cooldown_spin)
+
+        self.expr_stage_fallback_edit = QLineEdit(stage_editor_host)
+        stage_form.addRow("fallback", self.expr_stage_fallback_edit)
+
+        self.expr_stage_scene_tags_edit = QPlainTextEdit(stage_editor_host)
+        self.expr_stage_scene_tags_edit.setPlaceholderText("one tag per line")
+        self.expr_stage_scene_tags_edit.setMaximumHeight(100)
+        stage_form.addRow("sceneTags", self.expr_stage_scene_tags_edit)
+
+        stages_content.addWidget(stage_editor_host, stretch=3)
+        stages_layout.addLayout(stages_content)
+        root.addWidget(stages_box)
+
+        # ── Emotion Aliases ──
+        alias_box = QGroupBox("Emotion Aliases", host)
+        alias_layout = QVBoxLayout(alias_box)
+
+        self.expr_alias_table = QTableWidget(0, 2, alias_box)
+        self.expr_alias_table.setHorizontalHeaderLabels(["Alias", "Target Emotion"])
+        self.expr_alias_table.horizontalHeader().setStretchLastSection(True)
+        alias_layout.addWidget(self.expr_alias_table)
+
+        alias_btn_row = QHBoxLayout()
+        self.expr_alias_add_btn = QPushButton("Add", host)
+        self.expr_alias_add_btn.clicked.connect(self._on_add_expr_alias)
+        alias_btn_row.addWidget(self.expr_alias_add_btn)
+        self.expr_alias_delete_btn = QPushButton("Delete Selected", host)
+        self.expr_alias_delete_btn.clicked.connect(self._on_delete_expr_alias)
+        alias_btn_row.addWidget(self.expr_alias_delete_btn)
+        alias_layout.addLayout(alias_btn_row)
+
+        root.addWidget(alias_box)
+        root.addStretch()
+
+        scroll.setWidget(host)
+        wrapper = QVBoxLayout(tab)
+        wrapper.addWidget(scroll)
+        self.tabs.addTab(tab, "Expressions")
+
+    def _load_expressions_to_ui(self) -> None:
+        raw_expr = self._raw_config.get("live2dExpressions", {})
+        if not isinstance(raw_expr, dict):
+            raw_expr = {}
+
+        expr = self._config.live2dExpressions
+
+        self.expr_enabled_check.setChecked(bool(expr.enabled))
+        self.expr_default_expression_edit.setText(expr.default_expression)
+        self.expr_cooldown_spin.setValue(expr.cooldown_ms)
+        self.expr_multi_stage_check.setChecked(expr.enable_multi_stage)
+        self.expr_fallback_policy_combo.setCurrentText(expr.fallback_policy)
+
+        # Load stages
+        self._expr_stages_raw = []
+        self.expr_stage_list.clear()
+
+        stages_data = raw_expr.get("stages") if isinstance(raw_expr, dict) else None
+        if isinstance(stages_data, list):
+            self._expr_stages_raw = [copy.deepcopy(s) for s in stages_data if isinstance(s, dict)]
+        else:
+            self._expr_stages_raw = [stage.to_dict() for stage in expr.stages]
+
+        for idx, stage in enumerate(self._expr_stages_raw):
+            name = str(stage.get("emotion") or f"stage-{idx + 1}")
+            self.expr_stage_list.addItem(QListWidgetItem(name))
+
+        if self._expr_stages_raw:
+            self.expr_stage_list.setCurrentRow(0)
+        else:
+            self._current_expr_stage_index = None
+            self._clear_expr_stage_editor()
+
+        # Load aliases
+        aliases_data = raw_expr.get("emotionAliases") if isinstance(raw_expr, dict) else None
+        if isinstance(aliases_data, dict):
+            self._load_expr_aliases_to_table(aliases_data)
+        else:
+            self._load_expr_aliases_to_table(expr.emotion_aliases)
+
+    def _load_expr_aliases_to_table(self, aliases: dict[str, str]) -> None:
+        self.expr_alias_table.setRowCount(0)
+        for key, value in aliases.items():
+            row = self.expr_alias_table.rowCount()
+            self.expr_alias_table.insertRow(row)
+            self.expr_alias_table.setItem(row, 0, QTableWidgetItem(str(key)))
+            self.expr_alias_table.setItem(row, 1, QTableWidgetItem(str(value)))
+
+    def _collect_expr_aliases(self) -> dict[str, str]:
+        aliases: dict[str, str] = {}
+        for row in range(self.expr_alias_table.rowCount()):
+            key_item = self.expr_alias_table.item(row, 0)
+            value_item = self.expr_alias_table.item(row, 1)
+            if key_item and value_item:
+                key = key_item.text().strip()
+                value = value_item.text().strip()
+                if key and value:
+                    aliases[key] = value
+        return aliases
+
+    def _on_expr_stage_selected(self, row: int) -> None:
+        if self._syncing_expr_stage_editor:
+            return
+
+        if self._current_expr_stage_index is not None:
+            self._store_expr_stage_editor(self._current_expr_stage_index)
+
+        if row < 0 or row >= len(self._expr_stages_raw):
+            self._current_expr_stage_index = None
+            self._clear_expr_stage_editor()
+            return
+
+        self._current_expr_stage_index = row
+        stage = self._expr_stages_raw[row]
+        self._syncing_expr_stage_editor = True
+        try:
+            self.expr_stage_emotion_edit.setText(str(stage.get("emotion", "") or ""))
+            self.expr_stage_expression_edit.setText(str(stage.get("expression", "") or ""))
+            self.expr_stage_intensity_combo.setCurrentText(str(stage.get("intensity", "low") or "low"))
+            self.expr_stage_priority_spin.setValue(int(stage.get("priority", 0)))
+            self.expr_stage_cooldown_spin.setValue(int(stage.get("cooldownMs", 0)))
+            self.expr_stage_fallback_edit.setText(str(stage.get("fallback", "") or ""))
+
+            tags = stage.get("sceneTags", [])
+            if isinstance(tags, list):
+                self.expr_stage_scene_tags_edit.setPlainText("\n".join(str(t) for t in tags))
+            else:
+                self.expr_stage_scene_tags_edit.clear()
+        finally:
+            self._syncing_expr_stage_editor = False
+
+    def _store_expr_stage_editor(self, index: int) -> None:
+        if self._syncing_expr_stage_editor:
+            return
+        if index < 0 or index >= len(self._expr_stages_raw):
+            return
+
+        stage = self._expr_stages_raw[index]
+        stage["emotion"] = self.expr_stage_emotion_edit.text().strip()
+        stage["expression"] = self.expr_stage_expression_edit.text().strip()
+        stage["intensity"] = self.expr_stage_intensity_combo.currentText()
+        stage["priority"] = int(self.expr_stage_priority_spin.value())
+        stage["cooldownMs"] = int(self.expr_stage_cooldown_spin.value())
+        stage["fallback"] = self.expr_stage_fallback_edit.text().strip()
+        stage["sceneTags"] = self._parse_lines(self.expr_stage_scene_tags_edit)
+
+        self._rename_expr_stage_item(index, stage.get("emotion"))
+
+    def _clear_expr_stage_editor(self) -> None:
+        self.expr_stage_emotion_edit.clear()
+        self.expr_stage_expression_edit.clear()
+        self.expr_stage_intensity_combo.setCurrentIndex(0)
+        self.expr_stage_priority_spin.setValue(0)
+        self.expr_stage_cooldown_spin.setValue(0)
+        self.expr_stage_fallback_edit.clear()
+        self.expr_stage_scene_tags_edit.clear()
+
+    def _rename_expr_stage_item(self, index: int, name: Any) -> None:
+        if index < 0 or index >= self.expr_stage_list.count():
+            return
+        item = self.expr_stage_list.item(index)
+        if item is None:
+            return
+        title = str(name).strip() or f"stage-{index + 1}"
+        item.setText(title)
+
+    def _on_add_expr_stage(self) -> None:
+        if self._current_expr_stage_index is not None:
+            self._store_expr_stage_editor(self._current_expr_stage_index)
+
+        new_stage: dict[str, Any] = {
+            "emotion": "",
+            "expression": "",
+            "intensity": "low",
+            "priority": 0,
+            "cooldownMs": None,
+            "fallback": None,
+            "sceneTags": [],
+        }
+        self._expr_stages_raw.append(new_stage)
+        self.expr_stage_list.addItem(QListWidgetItem(f"stage-{len(self._expr_stages_raw)}"))
+        self.expr_stage_list.setCurrentRow(len(self._expr_stages_raw) - 1)
+
+    def _on_copy_expr_stage(self) -> None:
+        if self._current_expr_stage_index is None:
+            return
+        self._store_expr_stage_editor(self._current_expr_stage_index)
+        stage = copy.deepcopy(self._expr_stages_raw[self._current_expr_stage_index])
+        emotion = str(stage.get("emotion") or "stage")
+        stage["emotion"] = f"{emotion}-copy"
+        self._expr_stages_raw.insert(self._current_expr_stage_index + 1, stage)
+        self.expr_stage_list.insertItem(
+            self._current_expr_stage_index + 1,
+            QListWidgetItem(str(stage["emotion"])),
+        )
+        self.expr_stage_list.setCurrentRow(self._current_expr_stage_index + 1)
+
+    def _on_delete_expr_stage(self) -> None:
+        row = self.expr_stage_list.currentRow()
+        if row < 0 or row >= len(self._expr_stages_raw):
+            return
+        self.expr_stage_list.takeItem(row)
+        self._expr_stages_raw.pop(row)
+        if not self._expr_stages_raw:
+            self._current_expr_stage_index = None
+            self._clear_expr_stage_editor()
+            return
+        next_row = min(row, len(self._expr_stages_raw) - 1)
+        self.expr_stage_list.setCurrentRow(next_row)
+
+    def _on_move_expr_stage_up(self) -> None:
+        row = self.expr_stage_list.currentRow()
+        if row <= 0:
+            return
+        self._store_expr_stage_editor(row)
+        self._expr_stages_raw[row - 1], self._expr_stages_raw[row] = (
+            self._expr_stages_raw[row],
+            self._expr_stages_raw[row - 1],
+        )
+        item = self.expr_stage_list.takeItem(row)
+        self.expr_stage_list.insertItem(row - 1, item)
+        self.expr_stage_list.setCurrentRow(row - 1)
+
+    def _on_move_expr_stage_down(self) -> None:
+        row = self.expr_stage_list.currentRow()
+        if row < 0 or row >= len(self._expr_stages_raw) - 1:
+            return
+        self._store_expr_stage_editor(row)
+        self._expr_stages_raw[row], self._expr_stages_raw[row + 1] = (
+            self._expr_stages_raw[row + 1],
+            self._expr_stages_raw[row],
+        )
+        item = self.expr_stage_list.takeItem(row)
+        self.expr_stage_list.insertItem(row + 1, item)
+        self.expr_stage_list.setCurrentRow(row + 1)
+
+    def _on_add_expr_alias(self) -> None:
+        row = self.expr_alias_table.rowCount()
+        self.expr_alias_table.insertRow(row)
+        self.expr_alias_table.setItem(row, 0, QTableWidgetItem(""))
+        self.expr_alias_table.setItem(row, 1, QTableWidgetItem(""))
+        self.expr_alias_table.editItem(self.expr_alias_table.item(row, 0))
+
+    def _on_delete_expr_alias(self) -> None:
+        rows = set()
+        for item in self.expr_alias_table.selectedItems():
+            rows.add(item.row())
+        for row in sorted(rows, reverse=True):
+            self.expr_alias_table.removeRow(row)
+
     def _load_from_disk(self) -> None:
         try:
             self._raw_config, self._config = load_with_raw(self._config_path)
@@ -581,6 +924,7 @@ class SettingsWindow(QWidget):
             self._load_planning_to_ui()
             self._load_rag_to_ui()
             self._load_voice_to_ui()
+            self._load_expressions_to_ui()
         finally:
             self._syncing_model_editor = False
         self._set_status("Configuration loaded.", is_error=False)
@@ -969,6 +1313,8 @@ class SettingsWindow(QWidget):
             self.tabs.setCurrentIndex(5)
         elif field_lower.startswith("voice"):
             self.tabs.setCurrentIndex(6)
+        elif field_lower.startswith("live2dexpressions"):
+            self.tabs.setCurrentIndex(7)
 
     def _clear_error_styles(self) -> None:
         widgets = [
@@ -1015,6 +1361,18 @@ class SettingsWindow(QWidget):
             self.voice_batch_size_spin,
             self.voice_timeout_spin,
             self.voice_max_chars_spin,
+            self.expr_enabled_check,
+            self.expr_default_expression_edit,
+            self.expr_cooldown_spin,
+            self.expr_multi_stage_check,
+            self.expr_fallback_policy_combo,
+            self.expr_stage_emotion_edit,
+            self.expr_stage_expression_edit,
+            self.expr_stage_intensity_combo,
+            self.expr_stage_priority_spin,
+            self.expr_stage_cooldown_spin,
+            self.expr_stage_fallback_edit,
+            self.expr_stage_scene_tags_edit,
         ]
         for widget in widgets:
             widget.setStyleSheet("")
@@ -1052,7 +1410,37 @@ class SettingsWindow(QWidget):
             return
 
         if field_lower.startswith("live2dexpressions"):
-            self.tabs.setCurrentIndex(0)
+            self.tabs.setCurrentIndex(7)
+
+            expr_field_map = {
+                "live2dexpressions.enabled": self.expr_enabled_check,
+                "live2dexpressions.defaultexpression": self.expr_default_expression_edit,
+                "live2dexpressions.cooldownms": self.expr_cooldown_spin,
+                "live2dexpressions.enablemultistage": self.expr_multi_stage_check,
+                "live2dexpressions.fallbackpolicy": self.expr_fallback_policy_combo,
+            }
+            if field_lower in expr_field_map:
+                expr_field_map[field_lower].setStyleSheet("border: 1px solid #c62828;")
+
+            if field_lower.startswith("live2dexpressions.stages["):
+                self.tabs.setCurrentIndex(7)
+                stage_idx = self._extract_expr_stage_index(field_lower)
+                if stage_idx is not None and 0 <= stage_idx < len(self._expr_stages_raw):
+                    self.expr_stage_list.setCurrentRow(stage_idx)
+                if ".emotion" in field_lower:
+                    self.expr_stage_emotion_edit.setStyleSheet("border: 1px solid #c62828;")
+                elif ".expression" in field_lower:
+                    self.expr_stage_expression_edit.setStyleSheet("border: 1px solid #c62828;")
+                elif ".intensity" in field_lower:
+                    self.expr_stage_intensity_combo.setStyleSheet("border: 1px solid #c62828;")
+                elif ".priority" in field_lower:
+                    self.expr_stage_priority_spin.setStyleSheet("border: 1px solid #c62828;")
+                elif ".cooldownms" in field_lower:
+                    self.expr_stage_cooldown_spin.setStyleSheet("border: 1px solid #c62828;")
+                elif ".fallback" in field_lower:
+                    self.expr_stage_fallback_edit.setStyleSheet("border: 1px solid #c62828;")
+                elif ".scenetags" in field_lower:
+                    self.expr_stage_scene_tags_edit.setStyleSheet("border: 1px solid #c62828;")
             return
 
         memory_field_map = {
@@ -1117,6 +1505,19 @@ class SettingsWindow(QWidget):
         index_text = field[len("models["):end]
         try:
             return int(index_text)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _extract_expr_stage_index(field: str) -> int | None:
+        if "stages[" not in field:
+            return None
+        start = field.find("stages[") + len("stages[")
+        end = field.find("]", start)
+        if end <= start:
+            return None
+        try:
+            return int(field[start:end])
         except ValueError:
             return None
 
@@ -1219,9 +1620,20 @@ class SettingsWindow(QWidget):
             "max_tts_chars": int(self.voice_max_chars_spin.value()),
         }
 
+        live2d_expressions = {
+            "enabled": self.expr_enabled_check.isChecked(),
+            "defaultExpression": self.expr_default_expression_edit.text().strip(),
+            "cooldownMs": int(self.expr_cooldown_spin.value()),
+            "enableMultiStage": self.expr_multi_stage_check.isChecked(),
+            "fallbackPolicy": self.expr_fallback_policy_combo.currentText(),
+            "stages": [copy.deepcopy(stage) for stage in self._expr_stages_raw],
+            "emotionAliases": self._collect_expr_aliases(),
+        }
+
         return {
             "live2dSocket": self.live2d_socket_edit.text().strip(),
             "models": [copy.deepcopy(model) for model in self._models_raw],
+            "live2dExpressions": live2d_expressions,
             "memory": memory,
             "sandbox": sandbox,
             "planning": planning,
