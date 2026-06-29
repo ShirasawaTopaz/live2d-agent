@@ -1,5 +1,4 @@
 import logging
-import time
 from collections.abc import Callable
 from importlib import import_module
 from typing import Any
@@ -72,30 +71,15 @@ def create_tray_icon(
         menu.addSeparator()
     menu.addAction("退出").triggered.connect(quit_app)
     tray_icon.setContextMenu(menu)
+    tray_icon._menu = menu
     tray_icon.activated.connect(on_activated)
     tray_icon.show()
 
-    time.sleep(0.1)
     if tray_icon.isVisible():
         logger.info("系统托盘图标已成功显示")
-        try:
-            tray_icon.showMessage(
-                "Live2oder Agent",
-                "程序已在系统托盘运行，点击图标显示/隐藏输入框",
-                tray_cls.MessageIcon.Information,
-                5000,
-            )
-            logger.info("已显示托盘气泡通知")
-        except Exception as exc:
-            logger.warning("显示气泡通知失败: %s", exc)
     else:
         logger.warning("系统托盘图标未能显示，可能需要检查系统设置")
     return tray_icon
-
-
-def is_trigger_activation(reason: Any) -> bool:
-    tray_cls = import_module("PySide6.QtWidgets").QSystemTrayIcon
-    return reason == tray_cls.ActivationReason.Trigger
 
 
 def _build_app_icon(qt_app: Any) -> Any:
@@ -116,7 +100,7 @@ def _build_app_icon(qt_app: Any) -> Any:
     painter.end()
 
     icon = qt_gui.QIcon(pixmap)
-    if icon.isNull() or icon.availableSizes():
+    if icon.isNull() or not icon.availableSizes():
         logger.warning("创建的图标可能无效，尝试使用备用图标")
         icon = qt_app.style().standardIcon(qt_widgets.QStyle.StandardPixmap.SP_ComputerIcon)
     return icon

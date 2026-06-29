@@ -50,12 +50,15 @@ class Live2DAgentApp:
 
         context = await bootstrap_application()
         self._apply_bootstrap_context(context)
+        self._process_events()
         self._connect_runtime_and_input()
         self._setup_tray_and_window()
+        self._process_events()
         await self._initialize_session_router()
         await self._initialize_scheduler()
         await self._initialize_integrations()
         self.show_input_box()
+        self._process_events()
         logger.info("输入框已显示")
 
     def _apply_bootstrap_context(self, context: Any) -> None:
@@ -219,7 +222,7 @@ class Live2DAgentApp:
             setup_window_position(self.qt_app, self.input_box)
 
     def _process_events(self) -> None:
-        if self.qt_app is not None:
+        if self.qt_app is not None and hasattr(self.qt_app, "processEvents"):
             self.qt_app.processEvents()
 
     def _start_runtime(self) -> None:
@@ -295,9 +298,11 @@ class Live2DAgentApp:
         logger.debug("输入框可见性变化: %s", is_visible)
 
     def on_tray_activated(self, reason: Any) -> None:
-        from internal.app.tray import is_trigger_activation
+        from importlib import import_module
 
-        if is_trigger_activation(reason):
+        qt_widgets = import_module("PySide6.QtWidgets")
+        tray_cls = qt_widgets.QSystemTrayIcon
+        if reason in (tray_cls.ActivationReason.Trigger, tray_cls.ActivationReason.DoubleClick):
             if self.input_box is not None and self.input_box.isVisible():
                 self.hide_input_box()
             else:

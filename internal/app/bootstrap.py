@@ -84,6 +84,9 @@ def create_ui_components(agent: Any) -> tuple["FloatingInputBoxType", "BubbleWid
         BubbleWidget = ui_module.BubbleWidget
 
     input_box = FloatingInputBox(agent=agent)
+    input_box.show()
+    input_box.raise_()
+    input_box.activateWindow()
     bubble_widget = BubbleWidget()
     bubble_widget.set_theme(str(input_box._theme))
     agent.bubble_widget = bubble_widget

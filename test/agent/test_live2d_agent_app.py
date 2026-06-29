@@ -60,7 +60,7 @@ def test_reset_context_preserves_system_prompt() -> None:
 def test_initialize_applies_bootstrap_context_and_wires_runtime(monkeypatch) -> None:
     app = Live2DAgentApp()
     config = SimpleNamespace(live2dSocket="ws://example")
-    qt_app = SimpleNamespace()
+    qt_app = SimpleNamespace(processEvents=lambda: None)
     websocket = SimpleNamespace()
     agent = SimpleNamespace()
     input_box = SimpleNamespace(
@@ -87,9 +87,19 @@ def test_initialize_applies_bootstrap_context_and_wires_runtime(monkeypatch) -> 
     shown: list[bool] = []
     tray_calls: list[tuple[object, object]] = []
     attached: list[object] = []
+    init_calls: list[str] = []
 
     async def fake_bootstrap_application():
         return context
+
+    async def fake_initialize_session_router():
+        init_calls.append("session_router")
+
+    async def fake_initialize_scheduler():
+        init_calls.append("scheduler")
+
+    async def fake_initialize_integrations():
+        init_calls.append("integrations")
 
     monkeypatch.setattr("internal.app.bootstrap.bootstrap_application", fake_bootstrap_application)
     monkeypatch.setattr(
@@ -98,6 +108,9 @@ def test_initialize_applies_bootstrap_context_and_wires_runtime(monkeypatch) -> 
     )
     monkeypatch.setattr("internal.app.tray.create_tray_icon", lambda **kwargs: tray_calls.append((kwargs["qt_app"], kwargs["input_box"])) or SimpleNamespace())
     monkeypatch.setattr("internal.app.tray.setup_window_position", lambda qt_app_arg, input_box_arg: tray_calls.append((qt_app_arg, input_box_arg)))
+    monkeypatch.setattr(app, "_initialize_session_router", fake_initialize_session_router)
+    monkeypatch.setattr(app, "_initialize_scheduler", fake_initialize_scheduler)
+    monkeypatch.setattr(app, "_initialize_integrations", fake_initialize_integrations)
     monkeypatch.setattr(app, "show_input_box", lambda: shown.append(True))
     monkeypatch.setattr(app.runtime_state, "attach", lambda websocket_arg: attached.append(websocket_arg))
 
@@ -113,6 +126,7 @@ def test_initialize_applies_bootstrap_context_and_wires_runtime(monkeypatch) -> 
         assert attached == [websocket]
         assert shown == [True]
         assert tray_calls == [(qt_app, input_box), (qt_app, input_box)]
+        assert init_calls == ["session_router", "scheduler", "integrations"]
 
     asyncio.run(scenario())
 

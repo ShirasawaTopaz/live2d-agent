@@ -31,6 +31,15 @@ class FakeInputBox:
         self.agent = agent
         self._theme: str = "midnight"
 
+    def show(self) -> None:
+        pass
+
+    def raise_(self) -> None:
+        pass
+
+    def activateWindow(self) -> None:
+        pass
+
 
 class FakeBubbleWidget:
     def __init__(self) -> None:

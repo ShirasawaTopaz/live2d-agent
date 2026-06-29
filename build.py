@@ -9,6 +9,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from importlib.util import find_spec
 from pathlib import Path
@@ -126,15 +127,28 @@ def ensure_pyinstaller_installed() -> None:
     )
 
 
-def clean_build() -> None:
-    print("=== Cleaning previous build outputs ===")
-    for path in (OUTPUT_DIR, BUILD_ROOT, DIST_ROOT, Path("__pycache__")):
-        if path.exists():
+def _remove(path: Path, max_retries: int = 3) -> None:
+    for attempt in range(max_retries):
+        try:
             if path.is_dir():
                 shutil.rmtree(path)
             else:
                 path.unlink()
-            print(f"Removed: {path}")
+            return
+        except PermissionError:
+            if attempt == max_retries - 1:
+                print(f"Warning: could not remove {path} (permission denied), skipping")
+                return
+            time.sleep(1)
+
+
+def clean_build() -> None:
+    print("=== Cleaning previous build outputs ===")
+    for path in (OUTPUT_DIR, BUILD_ROOT, DIST_ROOT, Path("__pycache__")):
+        if path.exists():
+            _remove(path)
+            if not path.exists():
+                print(f"Removed: {path}")
     print()
 
 
