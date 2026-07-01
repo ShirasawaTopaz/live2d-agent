@@ -143,16 +143,16 @@ class NetworkSandbox:
         if self._port_is_blocked(port):
             return False, f"Port {port} is blocked"
 
-        # Check if host is a private IP
         try:
-            if self._is_private_ip(host):
-                if self.config.block_private_ips:
-                    return False, "Access to private IP addresses blocked"
+            ipaddress.ip_address(host)
+            is_ip = True
         except ValueError:
-            pass
+            is_ip = False
 
-        # Check domain whitelist if it's a domain
-        if not ipaddress.ip_address(host):
+        if is_ip:
+            if self.config.block_private_ips and self._is_private_ip(host):
+                return False, "Access to private IP addresses blocked"
+        else:
             if not self._domain_is_allowed(host):
                 return False, f"Domain '{host}' not in allowed domains list"
 

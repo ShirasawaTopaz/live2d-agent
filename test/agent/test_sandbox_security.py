@@ -108,3 +108,32 @@ class TestNetworkSandboxDnsRebinding:
         is_allowed, msg, _ = sandbox.validate_url("http://sub.example.com/path")
         assert not is_allowed
         assert "private" in msg.lower()
+
+
+class TestNetworkSandboxValidateHostPort:
+    def test_validate_host_port_domain_does_not_raise(self):
+        from internal.agent.sandbox.network_sandbox import NetworkSandbox
+        from internal.agent.sandbox.sandbox_config import NetworkSandboxConfig
+
+        config = NetworkSandboxConfig(
+            enabled=True,
+            allowed_domains=["example.com"],
+        )
+        sandbox = NetworkSandbox(config)
+
+        is_allowed, msg = sandbox.validate_host_port("example.com", 80)
+        assert is_allowed
+
+    def test_validate_host_port_private_ip_blocked(self):
+        from internal.agent.sandbox.network_sandbox import NetworkSandbox
+        from internal.agent.sandbox.sandbox_config import NetworkSandboxConfig
+
+        config = NetworkSandboxConfig(
+            enabled=True,
+            block_private_ips=True,
+            allowed_domains=[],
+        )
+        sandbox = NetworkSandbox(config)
+
+        is_allowed, msg = sandbox.validate_host_port("127.0.0.1", 80)
+        assert not is_allowed
