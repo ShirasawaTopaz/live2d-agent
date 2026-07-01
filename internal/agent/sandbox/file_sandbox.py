@@ -26,23 +26,15 @@ class FileSandbox:
         self.config.blocked_directories = expanded_blocked
 
     def _normalize_path(self, path: str) -> Optional[str]:
-        """Normalize and resolve path, detect path traversal attempts.
+        """Normalize and resolve path.
 
-        Returns None if path traversal is detected, normalized absolute path otherwise.
+        Returns None if the path cannot be resolved, otherwise returns the
+        normalized absolute real path (symlinks resolved).
         """
         try:
-            # Expand user and environment variables
             expanded = os.path.expanduser(os.path.expandvars(path))
-            # Get absolute path
             abs_path = os.path.abspath(expanded)
-            # Resolve symlinks (important security step)
             real_path = os.path.realpath(abs_path)
-
-            # Check for path traversal: if after resolution the path doesn't start
-            # with the original expanded path's prefix, traversal occurred
-            if not real_path.startswith(os.path.commonprefix([abs_path, real_path])):
-                return None
-
             return real_path
         except Exception:
             return None
