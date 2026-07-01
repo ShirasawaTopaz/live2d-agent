@@ -86,3 +86,25 @@ class TestFileSandboxGlobExpansion:
         is_allowed, msg, normalized = sandbox.validate_path(str(home_ssh / "id_rsa"))
         assert not is_allowed
         assert "blocked directory" in msg.lower()
+
+
+class TestNetworkSandboxDnsRebinding:
+    def test_allowed_domain_resolving_to_private_ip_is_blocked(self, monkeypatch):
+        from internal.agent.sandbox.network_sandbox import NetworkSandbox
+        from internal.agent.sandbox.sandbox_config import NetworkSandboxConfig
+
+        config = NetworkSandboxConfig(
+            enabled=True,
+            block_private_ips=True,
+            allowed_domains=["*.example.com"],
+        )
+        sandbox = NetworkSandbox(config)
+
+        def fake_getaddrinfo(host, port, *args, **kwargs):
+            return [(None, None, None, None, ("127.0.0.1", port))]
+
+        monkeypatch.setattr("socket.getaddrinfo", fake_getaddrinfo)
+
+        is_allowed, msg, _ = sandbox.validate_url("http://sub.example.com/path")
+        assert not is_allowed
+        assert "private" in msg.lower()

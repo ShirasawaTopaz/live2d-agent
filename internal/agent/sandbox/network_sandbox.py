@@ -1,5 +1,6 @@
 import ipaddress
-from typing import Tuple, Optional
+import socket
+from typing import List, Tuple, Optional
 from urllib.parse import urlparse
 from .sandbox_config import NetworkSandboxConfig
 
@@ -68,6 +69,16 @@ class NetworkSandbox:
         """Check if a port is in the blocked ports list."""
         return port in self.config.blocked_ports
 
+    def _resolve_domain_ips(self, domain: str, port: int) -> List[str]:
+        """Resolve a domain name and return unique IP addresses."""
+        try:
+            addr_infos = socket.getaddrinfo(
+                domain, port, proto=socket.IPPROTO_TCP
+            )
+            return list({str(info[4][0]) for info in addr_infos})
+        except socket.gaierror:
+            return []
+
     def validate_url(self, url: str) -> Tuple[bool, str, Optional[str]]:
         """
         Validate a URL against network security rules.
@@ -98,15 +109,19 @@ class NetworkSandbox:
         if self._port_is_blocked(port):
             return False, f"Port {port} is blocked", None
 
-        # Check for private IPs directly accessed
-        if self._is_private_ip(domain):
-            if self.config.block_private_ips:
-                return False, "Access to private IP addresses blocked", domain
-            return True, "", domain
-
-        # Check domain whitelist
+        # Check domain whitelist before doing DNS resolution
         if not self._domain_is_allowed(domain):
             return False, f"Domain '{domain}' not in allowed domains list", domain
+
+        # Resolve domain and check if any resolved IP is private
+        resolved_ips = self._resolve_domain_ips(domain, port)
+        if not resolved_ips:
+            return False, f"Could not resolve domain '{domain}'", domain
+
+        if self.config.block_private_ips:
+            for ip in resolved_ips:
+                if self._is_private_ip(ip):
+                    return False, "Access to private IP addresses blocked", domain
 
         return True, "", domain
 
