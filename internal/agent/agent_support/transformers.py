@@ -365,7 +365,7 @@ class Transformers(ModelTrait):
         # 如果需要工具调用，回退到完整响应模式
         # 因为工具调用需要完整解析，不适合流式输出
         if use_tools:
-            response_dict = self.chat(None, tools)
+            response_dict = await self.chat(None, tools)
             # 完整返回 response_dict 以便上层能检测到 tool_calls
             result = response_dict.copy()
             result["done"] = True
