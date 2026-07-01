@@ -1,11 +1,14 @@
 """Dynamic skill loader with hot-reload support."""
 
 import asyncio
+import logging
 import os
 import time
 import threading
 from pathlib import Path
 from typing import Callable, Optional
+
+logger = logging.getLogger(__name__)
 
 from .base import Skill
 from .manager import SkillManager
@@ -36,6 +39,7 @@ class SkillDirectoryWatcher(FileSystemEventHandler if WATCHDOG_AVAILABLE else ob
     def __init__(
         self,
         skill_manager: SkillManager,
+        loader: Optional["DynamicSkillLoader"] = None,
         on_skill_added: Optional[Callable[[str, Skill], None]] = None,
         on_skill_removed: Optional[Callable[[str], None]] = None,
         on_skill_changed: Optional[Callable[[str, Skill], None]] = None,
@@ -44,11 +48,13 @@ class SkillDirectoryWatcher(FileSystemEventHandler if WATCHDOG_AVAILABLE else ob
 
         Args:
             skill_manager: The skill manager instance
+            loader: The DynamicSkillLoader instance for scheduling async ops
             on_skill_added: Callback when a skill is added
             on_skill_removed: Callback when a skill is removed
             on_skill_changed: Callback when a skill is modified
         """
         self.skill_manager = skill_manager
+        self.loader = loader
         self.on_skill_added = on_skill_added
         self.on_skill_removed = on_skill_removed
         self.on_skill_changed = on_skill_changed
@@ -106,7 +112,8 @@ class SkillDirectoryWatcher(FileSystemEventHandler if WATCHDOG_AVAILABLE else ob
         # Only process skill.yaml changes or prompt file changes
         if "skill.yaml" in file_path or file_path.endswith(".md"):
             self._pending_changes[file_path] = current_time
-            asyncio.create_task(self._process_pending_changes())
+            if self.loader is not None:
+                self.loader._schedule_async(self._process_pending_changes())
 
     async def _process_pending_changes(self):
         """Process pending file changes after debounce interval."""
@@ -137,36 +144,54 @@ class SkillDirectoryWatcher(FileSystemEventHandler if WATCHDOG_AVAILABLE else ob
 
     def _handle_skill_added(self, skill_path: str):
         """Handle a new skill being added."""
+        if self.loader is None:
+            try:
+                skill = asyncio.run(self.skill_manager._load_skill(skill_path))
+                if skill:
+                    skill_name = Path(skill_path).name
+                    if self.on_skill_added:
+                        self.on_skill_added(skill_name, skill)
+            except Exception as e:
+                logger.error(f"Failed to load skill from {skill_path}: {e}")
+            return
         try:
-            skill = asyncio.run(self.skill_manager._load_skill(skill_path))
-            if skill:
-                skill_name = Path(skill_path).name
-                if self.on_skill_added:
-                    self.on_skill_added(skill_name, skill)
+            self.loader._schedule_async(self.skill_manager._load_skill(skill_path))
         except Exception as e:
-            print(f"Failed to load skill from {skill_path}: {e}")
+            logger.error(f"Failed to schedule skill load from {skill_path}: {e}")
 
     def _handle_skill_removed(self, skill_name: str):
         """Handle a skill being removed."""
         if self.on_skill_removed:
             self.on_skill_removed(skill_name)
 
+    async def _reload_skill(self, skill_path: str):
+        """Async helper to reload a skill."""
+        skill_name = Path(skill_path).name
+        if self.skill_manager.registry.get(skill_name):
+            if self.on_skill_removed:
+                self.on_skill_removed(skill_name)
+        skill = await self.skill_manager._load_skill(skill_path)
+        if skill and self.on_skill_changed:
+            self.on_skill_changed(skill_name, skill)
+
     def _handle_skill_changed(self, skill_path: str):
         """Handle a skill being modified."""
+        if self.loader is None:
+            try:
+                skill_name = Path(skill_path).name
+                if self.skill_manager.registry.get(skill_name):
+                    if self.on_skill_removed:
+                        self.on_skill_removed(skill_name)
+                skill = asyncio.run(self.skill_manager._load_skill(skill_path))
+                if skill and self.on_skill_changed:
+                    self.on_skill_changed(skill_name, skill)
+            except Exception as e:
+                logger.error(f"Failed to reload skill from {skill_path}: {e}")
+            return
         try:
-            skill_name = Path(skill_path).name
-
-            # Remove old version if exists
-            if self.skill_manager.registry.get(skill_name):
-                if self.on_skill_removed:
-                    self.on_skill_removed(skill_name)
-
-            # Load new version
-            skill = asyncio.run(self.skill_manager._load_skill(skill_path))
-            if skill and self.on_skill_changed:
-                self.on_skill_changed(skill_name, skill)
+            self.loader._schedule_async(self._reload_skill(skill_path))
         except Exception as e:
-            print(f"Failed to reload skill from {skill_path}: {e}")
+            logger.error(f"Failed to schedule skill reload from {skill_path}: {e}")
 
 
 class PollingSkillWatcher:
@@ -176,6 +201,7 @@ class PollingSkillWatcher:
         self,
         skill_manager: SkillManager,
         directories: list[str],
+        loader: Optional["DynamicSkillLoader"] = None,
         on_skill_added=None,
         on_skill_removed=None,
         on_skill_changed=None,
@@ -183,6 +209,7 @@ class PollingSkillWatcher:
     ):
         self.skill_manager = skill_manager
         self.directories = [os.path.abspath(d) for d in directories]
+        self.loader = loader
         self.on_skill_added = on_skill_added
         self.on_skill_removed = on_skill_removed
         self.on_skill_changed = on_skill_changed
@@ -217,7 +244,7 @@ class PollingSkillWatcher:
             try:
                 self._scan_all()
             except Exception as e:
-                print(f"[PollingWatcher] Error during scan: {e}")
+                logger.error(f"[PollingWatcher] Error during scan: {e}")
 
             # Sleep with early exit check
             for _ in range(int(self.poll_interval * 10)):
@@ -264,6 +291,7 @@ class PollingSkillWatcher:
         """Handle new skill."""
         watcher = SkillDirectoryWatcher(
             skill_manager=self.skill_manager,
+            loader=self.loader,
             on_skill_added=self.on_skill_added,
             on_skill_removed=self.on_skill_removed,
             on_skill_changed=self.on_skill_changed,
@@ -274,6 +302,7 @@ class PollingSkillWatcher:
         """Handle removed skill."""
         watcher = SkillDirectoryWatcher(
             skill_manager=self.skill_manager,
+            loader=self.loader,
             on_skill_added=self.on_skill_added,
             on_skill_removed=self.on_skill_removed,
             on_skill_changed=self.on_skill_changed,
@@ -284,6 +313,7 @@ class PollingSkillWatcher:
         """Handle changed skill."""
         watcher = SkillDirectoryWatcher(
             skill_manager=self.skill_manager,
+            loader=self.loader,
             on_skill_added=self.on_skill_added,
             on_skill_removed=self.on_skill_removed,
             on_skill_changed=self.on_skill_changed,
@@ -347,6 +377,14 @@ class DynamicSkillLoader:
         self._watchers: list[SkillDirectoryWatcher] = []
         self._watched_dirs: set[str] = set()
 
+        try:
+            self._loop = asyncio.get_running_loop()
+        except RuntimeError:
+            try:
+                self._loop = asyncio.get_event_loop()
+            except RuntimeError:
+                self._loop = None
+
     def watch(self, directories: list[str]) -> None:
         """Start watching skill directories for changes.
 
@@ -375,6 +413,7 @@ class DynamicSkillLoader:
             # Create watcher
             watcher = SkillDirectoryWatcher(
                 skill_manager=self.skill_manager,
+                loader=self,
                 on_skill_added=self._on_skill_added,
                 on_skill_removed=self._on_skill_removed,
                 on_skill_changed=self._on_skill_reloaded,
@@ -385,7 +424,7 @@ class DynamicSkillLoader:
             self._watchers.append(watcher)
             self._watched_dirs.add(directory)
 
-            print(f"[DynamicSkillLoader] Watching {abs_path} (watchdog)")
+            logger.info(f"[DynamicSkillLoader] Watching {abs_path} (watchdog)")
 
         if not self._observer.is_alive():
             self._observer.start()
@@ -395,6 +434,7 @@ class DynamicSkillLoader:
         self._polling_watcher = PollingSkillWatcher(
             skill_manager=self.skill_manager,
             directories=directories,
+            loader=self,
             on_skill_added=self._on_skill_added,
             on_skill_removed=self._on_skill_removed,
             on_skill_changed=self._on_skill_reloaded,
@@ -404,7 +444,7 @@ class DynamicSkillLoader:
 
         for directory in directories:
             abs_path = os.path.abspath(directory)
-            print(f"[DynamicSkillLoader] Watching {abs_path} (polling)")
+            logger.info(f"[DynamicSkillLoader] Watching {abs_path} (polling)")
 
     def stop(self) -> None:
         """Stop watching for changes."""
@@ -422,21 +462,44 @@ class DynamicSkillLoader:
         self._watchers.clear()
         self._watched_dirs.clear()
 
-        print("[DynamicSkillLoader] Stopped watching")
+        logger.info("[DynamicSkillLoader] Stopped watching")
+
+    def _get_loop(self) -> Optional[asyncio.AbstractEventLoop]:
+        """Get the event loop to use for scheduling async operations."""
+        if self._loop is None:
+            try:
+                self._loop = asyncio.get_running_loop()
+            except RuntimeError:
+                try:
+                    self._loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    self._loop = None
+        return self._loop
+
+    def _schedule_async(self, coro) -> None:
+        """Schedule a coroutine on the event loop from a sync context."""
+        loop = self._get_loop()
+        if loop is None:
+            logger.error("No event loop available to schedule async skill operation")
+            return
+        try:
+            asyncio.run_coroutine_threadsafe(coro, loop)
+        except Exception as e:
+            logger.error(f"Failed to schedule async skill operation: {e}")
 
     def _on_skill_added(self, name: str, skill: Skill) -> None:
         """Internal handler for skill added."""
-        print(f"[DynamicSkillLoader] Skill added: {name}")
+        logger.info(f"[DynamicSkillLoader] Skill added: {name}")
         if self.on_skill_added:
             self.on_skill_added(name, skill)
 
     def _on_skill_removed(self, name: str) -> None:
         """Internal handler for skill removed."""
-        print(f"[DynamicSkillLoader] Skill removed: {name}")
+        logger.info(f"[DynamicSkillLoader] Skill removed: {name}")
 
         # Disable the skill if enabled
         if self.skill_manager.is_enabled(name):
-            asyncio.create_task(self.skill_manager.disable(name))
+            self._schedule_async(self.skill_manager.disable(name))
 
         # Unregister from registry
         self.skill_manager.registry.unregister(name)
@@ -446,14 +509,14 @@ class DynamicSkillLoader:
 
     def _on_skill_reloaded(self, name: str, skill: Skill) -> None:
         """Internal handler for skill reloaded."""
-        print(f"[DynamicSkillLoader] Skill reloaded: {name}")
+        logger.info(f"[DynamicSkillLoader] Skill reloaded: {name}")
 
         # Check if skill was enabled
         was_enabled = self.skill_manager.is_enabled(name)
 
         # Disable old version if enabled
         if was_enabled:
-            asyncio.create_task(self.skill_manager.disable(name))
+            self._schedule_async(self.skill_manager.disable(name))
 
         # Unregister old version
         self.skill_manager.registry.unregister(name)
@@ -463,7 +526,7 @@ class DynamicSkillLoader:
 
         # Re-enable if it was enabled
         if was_enabled:
-            asyncio.create_task(self.skill_manager.enable(name))
+            self._schedule_async(self.skill_manager.enable(name))
 
         if self.on_skill_reloaded:
             self.on_skill_reloaded(name, skill)
