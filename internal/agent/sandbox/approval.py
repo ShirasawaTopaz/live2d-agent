@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Optional, Dict, Tuple
 from dataclasses import dataclass
@@ -30,6 +31,8 @@ class ApprovalManager:
         # Cache of remembered decisions (path -> decision)
         self._cache: Dict[str, bool] = {}
         self._cache_enabled = config.remember_choice
+        self._async_event = asyncio.Event()
+        self._async_wait_loop: Optional[asyncio.AbstractEventLoop] = None
 
     def _get_cache_key(self, operation_type: str, path: str) -> str:
         """Get cache key for a decision."""
@@ -104,6 +107,51 @@ class ApprovalManager:
 
             return response, "User responded"
 
+    async def request_approval_async(
+        self, operation_type: str, path: str, reason: str
+    ) -> Tuple[bool, str]:
+        if not self.config.enabled:
+            return True, "Approval disabled"
+
+        cached = self.check_cached_decision(operation_type, path)
+        if cached is not None:
+            logger.info(f"Using cached decision {cached} for {path}")
+            return cached, "Using cached decision"
+
+        with self._lock:
+            self._request_counter += 1
+            request_id = self._request_counter
+            self._pending_request = ApprovalRequest(
+                operation_type=operation_type,
+                path=path,
+                reason=reason,
+                request_id=request_id,
+            )
+            self._response = None
+            self._event.clear()
+            self._async_event.clear()
+            self._async_wait_loop = asyncio.get_running_loop()
+
+        logger.info(f"Waiting async for user approval: {operation_type} on {path}")
+        try:
+            await asyncio.wait_for(
+                self._async_event.wait(), timeout=self.config.timeout_seconds
+            )
+        except asyncio.TimeoutError:
+            with self._lock:
+                self._pending_request = None
+            return False, "Approval timed out, operation rejected"
+
+        with self._lock:
+            response = self._response
+            self._pending_request = None
+
+            if self._cache_enabled and response is not None:
+                key = self._get_cache_key(operation_type, path)
+                self._cache[key] = response
+
+            return response, "User responded"
+
     def get_pending_request(self) -> Optional[ApprovalRequest]:
         """Get the current pending approval request."""
         with self._lock:
@@ -130,6 +178,10 @@ class ApprovalManager:
                 return False
             self._response = approved
             self._event.set()
+            if self._async_wait_loop is not None:
+                self._async_wait_loop.call_soon_threadsafe(self._async_event.set)
+            else:
+                self._async_event.set()
             return True
 
     def clear_cache(self) -> None:

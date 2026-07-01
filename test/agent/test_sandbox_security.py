@@ -1,5 +1,6 @@
 """Tests for file sandbox path traversal and symlink protection."""
 
+import asyncio
 import os
 import pytest
 from internal.agent.sandbox.file_sandbox import FileSandbox
@@ -137,3 +138,33 @@ class TestNetworkSandboxValidateHostPort:
 
         is_allowed, msg = sandbox.validate_host_port("127.0.0.1", 80)
         assert not is_allowed
+
+
+class TestApprovalManagerAsync:
+    async def test_async_approval_times_out(self):
+        from internal.agent.sandbox.approval import ApprovalManager
+        from internal.agent.sandbox.sandbox_config import ApprovalConfig
+
+        config = ApprovalConfig(enabled=True, timeout_seconds=0.1)
+        manager = ApprovalManager(config)
+
+        approved, msg = await manager.request_approval_async("read", "/secret", "test")
+        assert not approved
+        assert "timed out" in msg.lower()
+
+    async def test_async_approval_responds(self):
+        from internal.agent.sandbox.approval import ApprovalManager
+        from internal.agent.sandbox.sandbox_config import ApprovalConfig
+
+        config = ApprovalConfig(enabled=True, timeout_seconds=5)
+        manager = ApprovalManager(config)
+
+        async def respond_later():
+            await asyncio.sleep(0.05)
+            req = manager.get_pending_request()
+            assert req is not None
+            manager.respond(req.request_id, True)
+
+        asyncio.create_task(respond_later())
+        approved, msg = await manager.request_approval_async("read", "/secret", "test")
+        assert approved
