@@ -1,7 +1,11 @@
+import glob
 import os
 import re
+import logging
 from typing import Tuple, Optional, List
 from .sandbox_config import FileSandboxConfig
+
+logger = logging.getLogger(__name__)
 
 
 class FileSandbox:
@@ -9,21 +13,30 @@ class FileSandbox:
 
     def __init__(self, config: FileSandboxConfig):
         self.config = config
-        self._expand_user_vars_in_config()
+        self._expand_paths_in_config()
 
-    def _expand_user_vars_in_config(self):
-        """Expand user home directory and environment variables in paths."""
+    def _expand_paths_in_config(self):
+        """Expand user home, environment variables, and glob patterns in paths."""
         expanded_allowed = []
         for path in self.config.allowed_directories:
-            expanded = os.path.expanduser(os.path.expandvars(path))
-            expanded_allowed.append(os.path.abspath(expanded))
-        self.config.allowed_directories = expanded_allowed
+            expanded_allowed.extend(self._expand_path_entry(path))
+        self.config.allowed_directories = list(dict.fromkeys(expanded_allowed))
 
         expanded_blocked = []
         for path in self.config.blocked_directories:
-            expanded = os.path.expanduser(os.path.expandvars(path))
-            expanded_blocked.append(os.path.abspath(expanded))
-        self.config.blocked_directories = expanded_blocked
+            expanded_blocked.extend(self._expand_path_entry(path))
+        self.config.blocked_directories = list(dict.fromkeys(expanded_blocked))
+
+    def _expand_path_entry(self, path: str) -> List[str]:
+        """Expand a single path entry. Supports ~, env vars, and glob patterns."""
+        expanded = os.path.expanduser(os.path.expandvars(path))
+        if any(c in expanded for c in "*?["):
+            matches = glob.glob(expanded, recursive=True)
+            if not matches:
+                logger.warning(f"Glob pattern '{path}' did not match any paths")
+                return [os.path.abspath(expanded)]
+            return [os.path.abspath(m) for m in matches]
+        return [os.path.abspath(expanded)]
 
     def _normalize_path(self, path: str) -> Optional[str]:
         """Normalize and resolve path.

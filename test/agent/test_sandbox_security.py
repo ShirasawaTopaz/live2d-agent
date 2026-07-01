@@ -63,3 +63,26 @@ class TestFileSandboxPathTraversal:
 
         is_allowed, msg, normalized = sandbox.validate_path(str(symlink))
         assert not is_allowed
+
+
+class TestFileSandboxGlobExpansion:
+    def test_blocked_directories_glob_expanded(self, tmp_path):
+        home_ssh = tmp_path / "home" / "user" / ".ssh"
+        home_ssh.mkdir(parents=True)
+        (home_ssh / "id_rsa").write_text("secret")
+
+        allowed = tmp_path / "work"
+        allowed.mkdir()
+
+        config = FileSandboxConfig(
+            enabled=True,
+            default_policy="deny",
+            allowed_directories=[str(allowed)],
+            blocked_directories=[str(tmp_path / "home" / "*" / ".ssh")],
+            allow_write=True,
+        )
+        sandbox = FileSandbox(config)
+
+        is_allowed, msg, normalized = sandbox.validate_path(str(home_ssh / "id_rsa"))
+        assert not is_allowed
+        assert "blocked directory" in msg.lower()
