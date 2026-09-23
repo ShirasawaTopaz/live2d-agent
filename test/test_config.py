@@ -28,6 +28,35 @@ def test_load_missing_config_file_returns_defaults(tmp_path):
     assert config.voice.startup_command == ""
     assert config.memory is not None
     assert config.sandbox is not None
+    assert config.session.enabled is True
+    assert config.session.load_embeddings is False
+
+
+def test_session_config_round_trips(tmp_path):
+    config = load_config(
+        tmp_path,
+        json.dumps(
+            {
+                "live2dSocket": "ws://example",
+                "models": [],
+                "session": {
+                    "enabled": False,
+                    "data_dir": "./custom/sessions",
+                    "load_embeddings": True,
+                    "embedding_model": "shibing624/text2vec-base-chinese",
+                },
+            }
+        ),
+    )
+
+    assert config.session.enabled is False
+    assert config.session.data_dir == "./custom/sessions"
+    assert config.session.load_embeddings is True
+    assert config.session.embedding_model == "shibing624/text2vec-base-chinese"
+    assert config.to_dict()["session"]["load_embeddings"] is True
+
+    restored = Config.from_dict(config.to_dict())
+    assert restored.session.data_dir == "./custom/sessions"
 
 
 def test_load_empty_config_file_returns_defaults(tmp_path):

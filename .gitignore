@@ -91,3 +91,11 @@ data
 prompt_modules/core/base_rules_test.md
 .worktrees/
 .superpowers/
+
+# ========== Runtime Artifacts ==========
+# Dynamic-tool and self-evolution audit trails are generated while the app runs
+internal/agent/tool/dynamic/audit_logs/
+.pytest_tmp/
+
+# The PyInstaller spec is ignored by default but this project ships it
+!live2d-agent.spec

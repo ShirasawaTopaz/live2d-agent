@@ -1,5 +1,5 @@
 import logging
-from typing import Type, Optional
+from typing import Callable, Type, Optional
 from typing_extensions import Any
 from internal.agent.tool.base import Tool
 from internal.agent.tool.dynamic.storage import DynamicToolStorage
@@ -17,6 +17,19 @@ class ToolRegistry:
         self.tools[tool.name] = tool
         if self.is_none:
             self.is_none = False
+
+    def register_with_disposer(self, tool: Tool) -> Callable[[], None]:
+        """Register a tool and return a disposer that unregisters it again.
+
+        Cordis plugins use this so a tool disappears together with the plugin
+        that contributed it.
+        """
+        self.register(tool)
+
+        def disposer() -> None:
+            self.unregister(tool.name)
+
+        return disposer
 
     def register_dynamic_tool(self, tool_class: Type[Tool]) -> Tool:
         """Register a dynamically loaded tool class.

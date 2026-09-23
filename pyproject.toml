@@ -1,6 +1,6 @@
 [project]
 name = "live2d-agent"
-version = "0.1.0"
+version = "0.2.0"
 description = ""
 authors = [
     {name = "ShirasawaTopaz",email = "3489840593@qq.com"}
@@ -19,7 +19,8 @@ dependencies = [
     "python-docx (>=1.1.0,<2.0.0)",
     "openpyxl (>=3.1.0,<4.0.0)",
     "python-pptx (>=0.6.2,<0.7.0)",
-    "pymupdf (>=1.24.0,<2.0.0)"
+    "pymupdf (>=1.24.0,<2.0.0)",
+    "pyyaml (>=6.0.0,<7.0.0)"
 ]
 
 [tool.poetry]

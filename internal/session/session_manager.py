@@ -15,14 +15,13 @@ import time
 import uuid
 from typing import TYPE_CHECKING
 
-from internal.session.types import ClassificationResult, Session
+from internal.session.types import Session
 from internal.session.router import Router, RouteAction
 from internal.session.topic_classifier import TopicClassifier
 from internal.session.session_store import SessionStore
 
 if TYPE_CHECKING:
     from internal.memory._manager import MemoryManager
-    from internal.rag.embeddings import EmbeddingGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +63,7 @@ class SessionManager:
     async def initialize(self) -> None:
         """Load existing sessions from store, create default if none."""
         await self._store.init()
+        await self._ensure_memory_ready()
 
         loaded = await self._store.list_all()
         self._sessions = {s.session_id: s for s in loaded}
@@ -77,6 +77,19 @@ class SessionManager:
             self._current_session_id = loaded[0].session_id
             if self._memory is not None and self._current_session_id is not None:
                 await self._memory.switch_session(self._current_session_id)
+
+    async def _ensure_memory_ready(self) -> None:
+        """Initialize the memory manager before any session switch happens.
+
+        ``MemoryManager.switch_session`` requires an initialized manager; doing
+        this here keeps ``initialize()`` order-independent for callers.
+        """
+        memory = self._memory
+        if memory is None or getattr(memory, "_initialized", False):
+            return
+        init = getattr(memory, "init", None)
+        if callable(init):
+            await init()
 
     async def create_session(
         self,

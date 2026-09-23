@@ -36,6 +36,7 @@ class Live2DAgentApp:
         self.hotkey_manager: Any = None
         self.clipboard_monitor: Any = None
         self.browser_controller: Any = None
+        self.plugin_context: Any = None
         self._processing = False
         self._context_lock = asyncio.Lock()
         self.runtime_state = QueueRuntimeCoordinator()
@@ -48,10 +49,12 @@ class Live2DAgentApp:
     async def initialize(self) -> None:
         from internal.app.bootstrap import bootstrap_application
 
+        await self._initialize_plugin_context()
         context = await bootstrap_application()
         self._apply_bootstrap_context(context)
         self._process_events()
         self._connect_runtime_and_input()
+        self._attach_plugin_services()
         self._setup_tray_and_window()
         self._process_events()
         await self._initialize_session_router()
@@ -60,6 +63,44 @@ class Live2DAgentApp:
         self.show_input_box()
         self._process_events()
         logger.info("输入框已显示")
+
+    async def _initialize_plugin_context(self) -> None:
+        """Mount the cordis plugin tree before the legacy bootstrap runs.
+
+        The tree is additive at this stage: ``bootstrap_application`` still
+        builds the Qt/agent/websocket objects, and this context provides the
+        services (config, logger, sandbox, agent loop, bubble output) that new
+        plugins consume. A failure here is reported and does not block startup.
+        """
+        try:
+            from internal.plugins import app as plugin_app
+
+            self.plugin_context = await plugin_app.create_plugin_context(watch=True)
+            logger.info("插件树已挂载: %d 个条目", len(self.plugin_context.loader.report()))
+        except Exception:
+            logger.warning("插件树初始化失败，继续使用传统启动路径", exc_info=True)
+            self.plugin_context = None
+
+    def _attach_plugin_services(self) -> None:
+        """Hand runtime objects to the plugins that own their slots."""
+        context = self.plugin_context
+        if context is None:
+            return
+        ctx = context.ctx
+        config_service = ctx.get("config")
+        if config_service is not None and self.config is not None:
+            config_service.value = self.config
+
+        loop = ctx.get("agent/loop")
+        if loop is not None and hasattr(loop, "attach_agent") and self.agent is not None:
+            loop.attach_agent(self.agent)
+
+        output = ctx.get("outputs/bubble")
+        if output is not None and hasattr(output, "attach") and self.bubble_widget is not None:
+            output.attach(
+                self.bubble_widget,
+                getattr(self.agent, "bubble_timing", None),
+            )
 
     def _apply_bootstrap_context(self, context: Any) -> None:
         self.config = context.config
@@ -96,16 +137,27 @@ class Live2DAgentApp:
             store = SessionStore(data_dir=data_dir)
             classifier = TopicClassifier(embedding_model=None)
 
-            # Try loading embeddings for better classification
-            try:
-                from internal.rag.embeddings import EmbeddingGenerator
-                emb = EmbeddingGenerator()
-                emb.load()
-                classifier = TopicClassifier(embedding_model=emb)
-            except Exception:
-                pass  # Keyword-only classification is fine
+            # Embedding-based classification is opt-in: loading the model is slow
+            # and must never sit on the startup path unless config asks for it.
+            if getattr(session_config, "load_embeddings", False):
+                try:
+                    from internal.rag.embeddings import EmbeddingGenerator
+
+                    model_name = getattr(session_config, "embedding_model", "") or None
+                    emb = EmbeddingGenerator(model_name=model_name)
+                    emb.load()
+                    classifier = TopicClassifier(embedding_model=emb)
+                except Exception:
+                    logger.warning(
+                        "Embedding classifier unavailable, using keyword matching",
+                        exc_info=True,
+                    )
 
             memory = self.agent.memory if hasattr(self.agent, "memory") else None
+            if memory is not None and not getattr(memory, "_initialized", False):
+                initializer = getattr(self.agent, "initialize_memory", None)
+                if callable(initializer):
+                    await initializer()
             router = SessionRouter(
                 session_store=store,
                 classifier=classifier,
@@ -426,3 +478,15 @@ class Live2DAgentApp:
             runtime_state=self.runtime_state,
             qt_app=self.qt_app,
         )
+        await self._dispose_plugin_context()
+
+    async def _dispose_plugin_context(self) -> None:
+        if self.plugin_context is None:
+            return
+        try:
+            await self.plugin_context.dispose()
+            logger.info("插件树已卸载")
+        except Exception:
+            logger.warning("插件树卸载失败", exc_info=True)
+        finally:
+            self.plugin_context = None

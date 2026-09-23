@@ -4215,4 +4215,4 @@ reference = "pku"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.14,<3.15"
-content-hash = "64292b91753503bc0c83c91577ae2316c11bc465dc940130f3eecce048b3fbd3"
+content-hash = "52700256e9474e67f703f8a161b904aa0d35b1c77708057b7820dcb21b5fa032"

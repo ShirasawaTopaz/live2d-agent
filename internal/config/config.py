@@ -123,6 +123,38 @@ class RAGConfig:
 
 
 @dataclass
+class SessionConfig:
+    """Configuration for the session auto-router.
+
+    ``load_embeddings`` is opt-in: loading an embedding model is slow (and can
+    block on a model download), so keyword-only classification is the default
+    and embedding-based topic detection must be requested explicitly.
+    """
+
+    enabled: bool = True
+    data_dir: str = "./data/sessions"
+    load_embeddings: bool = False
+    embedding_model: str = ""
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "SessionConfig":
+        return cls(
+            enabled=bool(data.get("enabled", True)),
+            data_dir=str(data.get("data_dir") or "./data/sessions"),
+            load_embeddings=bool(data.get("load_embeddings", False)),
+            embedding_model=str(data.get("embedding_model") or ""),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "data_dir": self.data_dir,
+            "load_embeddings": self.load_embeddings,
+            "embedding_model": self.embedding_model,
+        }
+
+
+@dataclass
 class VoiceConfig:
     """Configuration for GPT-SoVITs voice synthesis."""
 
@@ -326,6 +358,7 @@ class Config:
         self.planning: PlanningConfig = PlanningConfig()
         self.rag: RAGConfig = RAGConfig()
         self.voice: VoiceConfig = VoiceConfig()
+        self.session: SessionConfig = SessionConfig()
 
     @staticmethod
     async def load(config_path: str = DEFAULT_CONFIG_PATH) -> "Config":
@@ -379,6 +412,11 @@ class Config:
         else:
             self.voice = VoiceConfig()
 
+        if "session" in data and isinstance(data["session"], dict):
+            self.session = SessionConfig.from_dict(data["session"])
+        else:
+            self.session = SessionConfig()
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "live2dSocket": self.live2dSocket,
@@ -389,6 +427,7 @@ class Config:
             "planning": self.planning.to_dict(),
             "rag": self.rag.to_dict(),
             "voice": self.voice.to_dict(),
+            "session": self.session.to_dict(),
         }
 
     # 调用最上面设置为default的模型配置，如果都没设置default=true，则默认调用第一个

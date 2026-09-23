@@ -89,6 +89,7 @@ class HotkeyManager:
 
     def _register_qt(self, shortcut: str, callback: Callable[[], None]) -> bool:
         try:
+            from PySide6.QtCore import Qt
             from PySide6.QtWidgets import QApplication
             from PySide6.QtGui import QShortcut, QKeySequence
 
@@ -98,7 +99,7 @@ class HotkeyManager:
 
             key_seq = QKeySequence(shortcut)
             qsc = QShortcut(key_seq, None)
-            qsc.setContext(3)  # Qt.ApplicationShortcut
+            qsc.setContext(Qt.ShortcutContext.ApplicationShortcut)
             qsc.activated.connect(callback)
 
             self._bindings[shortcut] = qsc

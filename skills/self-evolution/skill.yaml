@@ -1,0 +1,40 @@
+# Skill: 自进化（self-evolution）
+name: self-evolution
+version: 1.0.0
+description: 让 Agent 在运行时创建、改写、热重载与回滚 cordis 插件（含最小循环与滚动字输出模块）
+author: Live2oder Team
+
+category: meta
+tags: [cordis, plugin, self-evolution, hot-reload, agent-loop, bubble]
+
+dependencies:
+  python_packages: []
+  system_commands: []
+  skills: []
+
+prompts:
+  - name: plugin_authoring
+    description: 何时以及如何铸造 cordis 插件，安全与回滚约束
+    required: true
+
+tools:
+  - name: plugin_scaffold
+    description: 生成插件骨架（tool/service/loop/output/prompt）
+  - name: plugin_install
+    description: 校验、版本快照、写入、挂载插件
+  - name: plugin_reload
+    description: 热重载插件条目
+  - name: plugin_rollback
+    description: 回滚到历史版本
+  - name: plugin_toggle
+    description: 启用/禁用插件
+  - name: plugin_status
+    description: 查看 fiber 状态与服务
+  - name: plugin_diagnose
+    description: 诊断 PENDING/FAILED 插件
+  - name: plugin_audit
+    description: 读取自进化审计日志
+
+config:
+  allow_core_writes: false
+  require_approval_for_core: true

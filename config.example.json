@@ -301,5 +301,11 @@
         "timeout_seconds": 60,
         "volume": 1.0,
         "max_tts_chars": 500
+    },
+    "session": {
+        "enabled": true,
+        "data_dir": "./data/sessions",
+        "load_embeddings": false,
+        "embedding_model": ""
     }
 }
